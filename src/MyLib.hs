@@ -2,6 +2,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module MyLib where
 
@@ -18,8 +20,10 @@ import           Data.Word         (Word64)
 
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Hashable (Hashable)
+import GHC.Generics (Generic)
 
-type Row = Vector Value
+type Row = [Value]
 type Bag = MultiSet Row
 
 data PartialOrdering = PLT | PEQ | PGT | PNONE deriving (Eq, Show)
@@ -36,6 +40,8 @@ instance (Show a) => Show (Timestamp a) where
 
 deriving instance (Eq a) => Eq (Timestamp a)
 deriving instance (Ord a) => Ord (Timestamp a)
+deriving instance Generic (Timestamp a)
+deriving instance (Hashable a) => Hashable (Timestamp a)
 
 class CausalOrd a b where
   causalCompare :: a -> b -> PartialOrdering
@@ -81,6 +87,7 @@ data FrontierChange a = FrontierChange
   }
 
 deriving instance (Eq a) => Eq (FrontierChange a)
+deriving instance (Ord a) => Ord (FrontierChange a)
 instance (Show a) => Show (FrontierChange a) where
   show FrontierChange{..} = "(" <> show frontierChangeTs
                                 <> ", " <> show frontierChangeDiff
@@ -111,6 +118,9 @@ moveFrontier ft direction ts = (Set.insert ts ft', FrontierChange ts 1 : changes
            PNONE -> acc) [] ft
     ft' = L.foldr (\FrontierChange{..} acc -> Set.delete frontierChangeTs acc) ft changes
 
+infixl 7 ~>>
+(~>>) :: (Ord a, Show a) => Frontier a -> (MoveDirection, Timestamp a) -> Frontier a
+(~>>) ft (direction,ts) = fst $ moveFrontier ft direction ts
 ----
 
 data TimestampsWithFrontier a = TimestampsWithFrontier
@@ -171,3 +181,39 @@ infixl 7 ->>
       -> (Timestamp a, Int)
       -> TimestampsWithFrontier a
 (->>) tsf (ts,diff) = fst $ updateTimestampsWithFrontier tsf ts diff
+
+----
+
+data DataChange a = DataChange
+  { dcRow :: Row
+  , dcTimestamp :: Timestamp a
+  , dcDiff :: Int
+  }
+deriving instance (Eq a) => Eq (DataChange a)
+deriving instance (Ord a) => Ord (DataChange a)
+deriving instance (Show a) => Show (DataChange a)
+
+data DataChangeBatch a = DataChangeBatch
+  { dcbLowerBound :: Frontier a
+  , dcbChanges :: [DataChange a] -- sorted and de-duplicated
+  }
+deriving instance (Eq a) => Eq (DataChangeBatch a)
+deriving instance (Ord a) => Ord (DataChangeBatch a)
+deriving instance (Show a) => Show (DataChangeBatch a)
+
+emptyDataChangeBatch :: DataChangeBatch a
+emptyDataChangeBatch = DataChangeBatch {dcbLowerBound=Set.empty, dcbChanges=[]}
+
+mkDataChangeBatch :: (Hashable a, Ord a, Show a)
+                  => [DataChange a]
+                  -> DataChangeBatch a
+mkDataChangeBatch changes = DataChangeBatch frontier sortedChanges
+  where getKey DataChange{..} = (dcRow, dcTimestamp)
+        coalescedChanges = HM.filter (\DataChange{..} -> dcDiff /= 0) $
+          L.foldr (\x acc -> HM.insertWith
+                    (\new old -> old {dcDiff = dcDiff new + dcDiff old} )
+                    (getKey x) x acc) HM.empty changes
+        sortedChanges = L.sort $ HM.elems coalescedChanges
+        frontier = L.foldr
+          (\DataChange{..} acc -> acc ~>> (MoveEarlier,dcTimestamp))
+          Set.empty sortedChanges
