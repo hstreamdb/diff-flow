@@ -78,7 +78,7 @@ type Frontier a = Set (Timestamp a)
 
 instance (Ord a) => CausalOrd (Frontier a) (Timestamp a) where
   causalCompare ft ts =
-    Set.foldr (\x acc -> if acc == PNONE then x `causalCompare` ts else acc) PNONE ft
+    Set.foldl (\acc x -> if acc == PNONE then x `causalCompare` ts else acc) PNONE ft
 
 data MoveDirection = MoveLater | MoveEarlier deriving (Show, Eq, Enum, Read)
 data FrontierChange a = FrontierChange
@@ -103,20 +103,34 @@ moveFrontier :: (Ord a, Show a)
              -> (Frontier a, [FrontierChange a])
 moveFrontier ft direction ts = (Set.insert ts ft', FrontierChange ts 1 : changes)
   where
-    changes = case direction of
+    (_, changes) = case direction of
       MoveLater   ->
-         Set.foldr (\x acc -> case x `causalCompare` ts of
-           PEQ   -> error $ "Already moved to " <> show ts <> "? Found " <> show x
-           PGT   -> error $ "Already moved to " <> show ts <> "? Found " <> show x
-           PLT   -> let change = FrontierChange x (-1) in change:acc
-           PNONE -> acc) [] ft
+        Set.foldl (\(goOn,acc) x ->
+          case goOn of
+            False -> (goOn,acc)
+            True  -> case x `causalCompare` ts of
+              PEQ   -> if L.null acc then (False,acc)
+                         else error $
+                              "Already moved to " <> show ts <> "? Found " <> show x
+              PGT   -> if L.null acc then (False,acc)
+                         else error $
+                              "Already moved to " <> show ts <> "? Found " <> show x
+              PLT   -> let change = FrontierChange x (-1) in (goOn, change:acc)
+              PNONE -> (goOn,acc)) (True,[]) ft
       MoveEarlier ->
-        Set.foldr (\x acc -> case x `causalCompare` ts of
-           PEQ   -> error $ "Already moved to " <> show ts <> "? Found " <> show x
-           PLT   -> error $ "Already moved to " <> show ts <> "? Found " <> show x
-           PGT   -> let change = FrontierChange x (-1) in change:acc
-           PNONE -> acc) [] ft
-    ft' = L.foldr (\FrontierChange{..} acc -> Set.delete frontierChangeTs acc) ft changes
+        Set.foldl (\(goOn,acc) x ->
+          case goOn of
+            False -> (goOn,acc)
+            True  -> case x `causalCompare` ts of
+              PEQ   -> if L.null acc then (False,acc)
+                         else error $
+                              "Already moved to " <> show ts <> "? Found " <> show x
+              PLT   -> if L.null acc then (False,acc)
+                         else error $
+                              "Already moved to " <> show ts <> "? Found " <> show x
+              PGT   -> let change = FrontierChange x (-1) in (goOn, change:acc)
+              PNONE -> (goOn,acc)) (True,[]) ft
+    ft' = L.foldl (\acc FrontierChange{..} -> Set.delete frontierChangeTs acc) ft changes
 
 infixl 7 ~>>
 (~>>) :: (Ord a, Show a) => Frontier a -> (MoveDirection, Timestamp a) -> Frontier a
@@ -151,7 +165,7 @@ updateTimestampsWithFrontier TimestampsWithFrontier{..} ts diff
                    frontierRemoved = Set.delete ts tsfFrontier
                    frontierAdds = MultiSet.toSet $ MultiSet.filter (\x -> frontierRemoved `causalCompare` x == PNONE) (MultiSet.filter (\x -> x `causalCompare` ts == PGT) tsfTimestamps)
                    frontierChanges = L.map (\x -> FrontierChange x 1) (Set.toList frontierAdds)
-                   frontierInserted = Set.foldr Set.insert frontierRemoved frontierAdds
+                   frontierInserted = Set.foldl (flip Set.insert) frontierRemoved frontierAdds
                    tsf' = TimestampsWithFrontier timestampsInserted frontierInserted
                 in (tsf', change:frontierChanges)
     -- the item was not present but now got inserted. it is new!
@@ -168,7 +182,7 @@ updateTimestampsWithFrontier TimestampsWithFrontier{..} ts diff
                  frontierInserted = Set.insert ts tsfFrontier
                  frontierRemoves = Set.filter (\x -> x `causalCompare` ts == PGT) frontierInserted
                  frontierChanges = L.map (\x -> FrontierChange x (-1)) (Set.toList frontierRemoves)
-                 frontierRemoved = Set.foldr Set.delete frontierInserted frontierRemoves
+                 frontierRemoved = Set.foldl (flip Set.delete) frontierInserted frontierRemoves
                  tsf' = TimestampsWithFrontier timestampsInserted frontierRemoved
               in (tsf', change:frontierChanges)
   | otherwise = let tsf' = TimestampsWithFrontier timestampsInserted tsfFrontier
@@ -204,16 +218,45 @@ deriving instance (Show a) => Show (DataChangeBatch a)
 emptyDataChangeBatch :: DataChangeBatch a
 emptyDataChangeBatch = DataChangeBatch {dcbLowerBound=Set.empty, dcbChanges=[]}
 
+dataChangeBatchLen :: DataChangeBatch a -> Int
+dataChangeBatchLen DataChangeBatch{..} = L.length dcbChanges
+
 mkDataChangeBatch :: (Hashable a, Ord a, Show a)
                   => [DataChange a]
                   -> DataChangeBatch a
 mkDataChangeBatch changes = DataChangeBatch frontier sortedChanges
   where getKey DataChange{..} = (dcRow, dcTimestamp)
         coalescedChanges = HM.filter (\DataChange{..} -> dcDiff /= 0) $
-          L.foldr (\x acc -> HM.insertWith
+          L.foldl (\acc x -> HM.insertWith
                     (\new old -> old {dcDiff = dcDiff new + dcDiff old} )
                     (getKey x) x acc) HM.empty changes
         sortedChanges = L.sort $ HM.elems coalescedChanges
-        frontier = L.foldr
-          (\DataChange{..} acc -> acc ~>> (MoveEarlier,dcTimestamp))
+        frontier = L.foldl
+          (\acc DataChange{..} -> acc ~>> (MoveEarlier,dcTimestamp))
           Set.empty sortedChanges
+
+----
+
+newtype Index a = Index
+  { indexChangeBatches :: [DataChangeBatch a]
+  }
+deriving instance (Eq a) => Eq (Index a)
+deriving instance (Ord a) => Ord (Index a)
+deriving instance (Show a) => Show (Index a)
+
+addChangeBatchToIndex :: (Hashable a, Ord a, Show a)
+                      => Index a
+                      -> DataChangeBatch a
+                      -> Index a
+addChangeBatchToIndex Index{..} changeBatch =
+  Index (adjustBatches $ indexChangeBatches ++ [changeBatch])
+  where
+    adjustBatches [] = []
+    adjustBatches [x] = [x]
+    adjustBatches l@(x:y:xs)
+      | dataChangeBatchLen lastBatch * 2 <= dataChangeBatchLen secondLastBatch = l
+      | otherwise =
+        let newBatch = mkDataChangeBatch (dcbChanges lastBatch ++ dcbChanges secondLastBatch)
+         in adjustBatches ((L.init . L.init $ l) ++ [newBatch])
+      where lastBatch = L.last l
+            secondLastBatch = L.last . L.init $ l

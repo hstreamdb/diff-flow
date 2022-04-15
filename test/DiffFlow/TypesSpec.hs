@@ -10,11 +10,13 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Hashable (Hashable)
 import Data.Aeson (Value (..))
+import qualified Data.List as L
 
 spec :: Spec
 spec = describe "TypesSpec" $ do
   timestampsWithFrontier
   dataChangeBatch
+  index
 
 
 updateTimestampsWithFrontierChecker :: (Ord a, Show a)
@@ -38,6 +40,14 @@ mkDataChangeBatchChecker :: (Hashable a, Ord a, Show a)
 mkDataChangeBatchChecker changes expectedChanges =
   dcbChanges dataChangeBatch == expectedChanges
   where dataChangeBatch = mkDataChangeBatch changes
+
+addChangeBatchToIndexChecker :: (Hashable a, Ord a, Show a)
+                             => [DataChangeBatch a]
+                             -> Index a
+                             -> Bool
+addChangeBatchToIndexChecker batches expectedIndex = expectedIndex == actualIndex
+  where actualIndex =
+          L.foldl addChangeBatchToIndex (Index []) batches
 
 timestampsWithFrontier :: Spec
 timestampsWithFrontier = describe "TimestampsWithFrontier" $ do
@@ -142,4 +152,102 @@ dataChangeBatch = describe "DataChangeBatch" $ do
       [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
       ]
       [ DataChange [String "a"] (Timestamp  0         []) 1]
+      `shouldBe` True
+
+
+index :: Spec
+index = describe "Index" $ do
+  it "add DataChangeBatch to Index" $ do
+    addChangeBatchToIndexChecker
+      [mkDataChangeBatch [DataChange [String "a"] (Timestamp (0 :: Int) []) 1]]
+      (Index [mkDataChangeBatch [DataChange [String "a"] (Timestamp 0 []) 1]])
+      `shouldBe` True
+    addChangeBatchToIndexChecker
+      [ mkDataChangeBatch [DataChange [String "a"] (Timestamp (0 :: Int) []) 1]
+      , mkDataChangeBatch [DataChange [String "a"] (Timestamp (0 :: Int) []) 1]
+      ]
+      (Index [mkDataChangeBatch [DataChange [String "a"] (Timestamp (0 :: Int) []) 2]])
+      `shouldBe` True
+    addChangeBatchToIndexChecker
+      [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
+                          ]
+      , mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1]
+      ]
+      (Index [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
+                                 ]
+             , mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1]
+             ]
+      )
+      `shouldBe` True
+    addChangeBatchToIndexChecker
+      [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
+                          ]
+      , mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "b"] (Timestamp (0 :: Int) []) (-1)
+                          ]
+      ]
+      (Index [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 2]
+             ]
+      )
+      `shouldBe` True
+    addChangeBatchToIndexChecker
+      [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "b"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "c"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "d"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "e"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "f"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "g"] (Timestamp (0 :: Int) []) 1 ]
+      ]
+      (Index [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "c"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "d"] (Timestamp (0 :: Int) []) 1
+                                 ]
+             , mkDataChangeBatch [ DataChange [String "e"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "f"] (Timestamp (0 :: Int) []) 1
+                                 ]
+             , mkDataChangeBatch [ DataChange [String "g"] (Timestamp (0 :: Int) []) 1 ]
+             ]
+      )
+      `shouldBe` True
+    addChangeBatchToIndexChecker
+      [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "b"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "c"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "d"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "e"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "f"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "g"] (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange [String "h"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "i"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "j"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "k"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "l"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "m"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "n"] (Timestamp (0 :: Int) []) 1
+                          , DataChange [String "o"] (Timestamp (0 :: Int) []) 1
+                          ]
+      ]
+      (Index [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "c"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "d"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "e"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "f"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "g"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "h"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "i"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "j"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "k"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "l"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "m"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "n"] (Timestamp (0 :: Int) []) 1
+                                 , DataChange [String "o"] (Timestamp (0 :: Int) []) 1
+                                 ]
+             ]
+      )
       `shouldBe` True
