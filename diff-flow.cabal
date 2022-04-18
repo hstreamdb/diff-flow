@@ -22,43 +22,46 @@ maintainer:         maosics@gmail.com
 extra-source-files: CHANGELOG.md
 
 library
-    exposed-modules:  Types
-                      Graph
+  exposed-modules:
+    Graph
+    Types
 
-    -- Modules included in this library but not exported.
-    -- other-modules:
+  -- Modules included in this library but not exported.
+  -- other-modules:
 
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-    build-depends:    base ^>=4.14.3.0
-                    , vector
-                    , time
-                    , containers
-                    , unordered-containers
-                    , text
-                    , aeson
-                    , multiset
-                    , hashable
-    hs-source-dirs:   src
-    default-language: Haskell2010
+  -- LANGUAGE extensions used by modules in this package.
+  -- other-extensions:
+  build-depends:
+    , aeson
+    , base                  ^>=4.14.3.0
+    , containers
+    , hashable
+    , multiset
+    , text
+    , time
+    , unordered-containers
+    , vector
+
+  hs-source-dirs:   src
+  default-language: Haskell2010
 
 test-suite lib-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
-  other-modules:
-    DiffFlow.TypesSpec
+  other-modules:      DiffFlow.TypesSpec
   hs-source-dirs:     test
-  build-depends:      base                  ^>=4.14.3.0
-                    , diff-flow
-                    , vector
-                    , time
-                    , containers
-                    , unordered-containers
-                    , text
-                    , aeson
-                    , multiset
-                    , hashable
-                    , hspec
+  build-depends:
+    , aeson
+    , base                  ^>=4.14.3.0
+    , containers
+    , diff-flow
+    , hashable
+    , hspec
+    , multiset
+    , text
+    , time
+    , unordered-containers
+    , vector
 
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*

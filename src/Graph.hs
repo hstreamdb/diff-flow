@@ -1,29 +1,29 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs           #-}
 {-# LANGUAGE RecordWildCards #-}
 
 module Graph where
 
-import Types
+import           Types
 
-import Data.Word (Word64)
-import Data.Aeson (Value (..))
-import Control.Concurrent.MVar
-import Data.Set (Set)
-import qualified Data.Set as Set
+import           Control.Concurrent.MVar
+import           Data.Aeson              (Value (..))
+import           Data.Set                (Set)
+import qualified Data.Set                as Set
+import           Data.Word               (Word64)
 
 
-import Data.Proxy
-import qualified Data.HashMap.Lazy as HM
-import Data.HashMap.Lazy (HashMap)
-import Data.Hashable (Hashable)
-import qualified Data.List as L
-import Data.Vector (Vector)
-import qualified Data.Vector as V
+import           Data.Hashable           (Hashable)
+import           Data.HashMap.Lazy       (HashMap)
+import qualified Data.HashMap.Lazy       as HM
+import qualified Data.List               as L
+import           Data.Proxy
+import           Data.Vector             (Vector)
+import qualified Data.Vector             as V
 
 newtype Node = Node { nodeId :: Int } deriving (Eq, Show, Ord)
 
 data NodeInput = NodeInput
-  { nodeInputNode :: Node
+  { nodeInputNode  :: Node
   , nodeInputIndex :: Int
   } deriving (Eq, Show, Ord)
 
@@ -61,12 +61,12 @@ outputIndex :: NodeSpec -> Bool
 outputIndex (IndexSpec _)        = True
 outputIndex (DistinctSpec _)     = True
 outputIndex (ReduceSpec _ _ _ _) = True
-outputIndex _ = False
+outputIndex _                    = False
 
 needIndex :: NodeSpec -> Bool
 needIndex (DistinctSpec _)     = True
 needIndex (ReduceSpec _ _ _ _) = True
-needIndex _ = False
+needIndex _                    = False
 
 getInpusFromSpec :: NodeSpec -> Vector Node
 getInpusFromSpec InputSpec = V.empty
@@ -125,15 +125,15 @@ specToState _ = return NoState
 newtype Subgraph = Subgraph { subgraphId :: Int } deriving (Eq, Show)
 
 data Graph = Graph
-  { graphNodeSpecs :: HashMap Int NodeSpec
-  , graphNodeSubgraphs :: HashMap Int [Subgraph]
+  { graphNodeSpecs       :: HashMap Int NodeSpec
+  , graphNodeSubgraphs   :: HashMap Int [Subgraph]
   , graphSubgraphParents :: HashMap Int Subgraph
   , graphDownstreamNodes :: HashMap Int [NodeInput]
   }
 
 data GraphBuilder = GraphBuilder
-  { graphBuilderNodeSpecs :: Vector NodeSpec
-  , graphBuilderSubgraphs :: Vector Subgraph
+  { graphBuilderNodeSpecs       :: Vector NodeSpec
+  , graphBuilderSubgraphs       :: Vector Subgraph
   , graphBuilderSubgraphParents :: Vector Subgraph
   }
 

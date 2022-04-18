@@ -1,9 +1,9 @@
+{-# LANGUAGE DeriveAnyClass        #-}
+{-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module Types where
 
@@ -13,15 +13,15 @@ import qualified Data.Aeson        as Aeson
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.List         as L
 import           Data.MultiSet     (MultiSet)
-import qualified Data.MultiSet as MultiSet
+import qualified Data.MultiSet     as MultiSet
 import           Data.Vector       (Vector)
 import qualified Data.Vector       as V
 import           Data.Word         (Word64)
 
-import Data.Set (Set)
-import qualified Data.Set as Set
-import Data.Hashable (Hashable)
-import GHC.Generics (Generic)
+import           Data.Hashable     (Hashable)
+import           Data.Set          (Set)
+import qualified Data.Set          as Set
+import           GHC.Generics      (Generic)
 
 type Row = [Value]
 type Bag = MultiSet Row
@@ -199,9 +199,9 @@ infixl 7 ->>
 ----
 
 data DataChange a = DataChange
-  { dcRow :: Row
+  { dcRow       :: Row
   , dcTimestamp :: Timestamp a
-  , dcDiff :: Int
+  , dcDiff      :: Int
   }
 deriving instance (Eq a) => Eq (DataChange a)
 deriving instance (Ord a) => Ord (DataChange a)
@@ -209,7 +209,7 @@ deriving instance (Show a) => Show (DataChange a)
 
 data DataChangeBatch a = DataChangeBatch
   { dcbLowerBound :: Frontier a
-  , dcbChanges :: [DataChange a] -- sorted and de-duplicated
+  , dcbChanges    :: [DataChange a] -- sorted and de-duplicated
   }
 deriving instance (Eq a) => Eq (DataChangeBatch a)
 deriving instance (Ord a) => Ord (DataChangeBatch a)

@@ -2,15 +2,15 @@
 
 module DiffFlow.TypesSpec where
 
-import Types
-import Test.Hspec
-import Data.MultiSet (MultiSet)
+import           Data.Aeson    (Value (..))
+import           Data.Hashable (Hashable)
+import qualified Data.List     as L
+import           Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MultiSet
-import Data.Set (Set)
-import qualified Data.Set as Set
-import Data.Hashable (Hashable)
-import Data.Aeson (Value (..))
-import qualified Data.List as L
+import           Data.Set      (Set)
+import qualified Data.Set      as Set
+import           Test.Hspec
+import           Types
 
 spec :: Spec
 spec = describe "TypesSpec" $ do
