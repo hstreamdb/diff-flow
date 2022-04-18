@@ -2,7 +2,7 @@
 
 module DiffFlow.TypesSpec where
 
-import MyLib
+import Types
 import Test.Hspec
 import Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MultiSet

@@ -5,7 +5,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 
-module MyLib where
+module Types where
 
 import           Control.Monad
 import           Data.Aeson        (Object (..), Value (..))

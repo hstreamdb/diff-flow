@@ -3,7 +3,7 @@
 
 module Graph where
 
-import MyLib
+import Types
 
 import Data.Word (Word64)
 import Data.Aeson (Value (..))
