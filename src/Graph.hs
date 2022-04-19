@@ -93,6 +93,15 @@ data NodeState a
   | ReduceState (MVar (Index a)) (MVar (HashMap Row (Set (Timestamp a))))
   | NoState
 
+instance Show (NodeState a) where
+  show (InputState _ _)    = "InputState"
+  show (IndexState _ _)    = "IndexState"
+  show (JoinState _ _)     = "JoinState"
+  show (OutputState _)     = "OutputState"
+  show (DistinctState _ _) = "DistinctState"
+  show (ReduceState _ _)   = "ReduceState"
+  show NoState             = "NodeState"
+
 specToState :: (Show a, Ord a, Hashable a) => NodeSpec -> IO (NodeState a)
 specToState InputSpec = do
   frontier <- newMVar Set.empty

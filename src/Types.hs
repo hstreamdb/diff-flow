@@ -235,6 +235,13 @@ mkDataChangeBatch changes = DataChangeBatch frontier sortedChanges
           (\acc DataChange{..} -> acc ~>> (MoveEarlier,dcTimestamp))
           Set.empty sortedChanges
 
+updateDataChangeBatch :: (Hashable a, Ord a, Show a)
+                      => DataChangeBatch a
+                      -> ([DataChange a] -> [DataChange a])
+                      -> DataChangeBatch a
+updateDataChangeBatch oldBatch f =
+  mkDataChangeBatch $ f (dcbChanges oldBatch)
+
 ----
 
 newtype Index a = Index

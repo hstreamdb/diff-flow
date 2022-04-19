@@ -25,6 +25,7 @@ library
   exposed-modules:
     Graph
     Types
+    Shard
 
   -- Modules included in this library but not exported.
   -- other-modules:
