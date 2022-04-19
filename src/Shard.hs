@@ -1,4 +1,7 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveAnyClass     #-}
+{-# LANGUAGE DeriveGeneric      #-}
+{-# LANGUAGE RecordWildCards    #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module Shard where
 
@@ -13,6 +16,7 @@ import qualified Data.HashMap.Lazy       as HM
 import qualified Data.List               as L
 import qualified Data.Set                as Set
 import qualified Data.Vector             as V
+import           GHC.Generics            (Generic)
 
 data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch a
@@ -25,6 +29,9 @@ data Pointstamp a = Pointstamp
   , pointstampSubgraphs :: [Subgraph]
   , pointstampTimestamp :: Timestamp a
   }
+deriving instance (Eq a) => Eq (Pointstamp a)
+deriving instance Generic (Pointstamp a)
+deriving instance (Hashable a) => Hashable (Pointstamp a)
 
 data Shard a = Shard
   { shardGraph                      :: Graph
@@ -201,3 +208,24 @@ processChangeBatch shard@Shard{..} = do
           undefined
         ReduceSpec _ _ _ _ -> do
           undefined
+
+queueFrontierChange :: (Hashable a, Ord a, Show a) => Shard a -> NodeInput -> Timestamp a -> Int -> IO ()
+queueFrontierChange Shard{..} nodeInput@NodeInput{..} ts diff = do
+  assert (diff /= 0) (return ())
+  shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
+  let nodeSpec = graphNodeSpecs shardGraph HM.! nodeId nodeInputNode
+      inputNode = (V.!) (getInpusFromSpec nodeSpec) nodeInputIndex
+  let thisSubgraphs = graphNodeSubgraphs shardGraph HM.! nodeId nodeInputNode
+      pointstamp = Pointstamp
+        { pointstampNodeInput = nodeInput
+        , pointstampSubgraphs = thisSubgraphs
+        , pointstampTimestamp = ts
+        }
+  case HM.lookup pointstamp shardUnprocessedFrontierUpdates' of
+    Nothing ->
+      modifyMVar_ shardUnprocessedFrontierUpdates (return . HM.insert pointstamp diff)
+    Just n  ->
+      if n + diff == 0 then
+        modifyMVar_ shardUnprocessedFrontierUpdates (return . HM.delete pointstamp)
+      else
+        modifyMVar_ shardUnprocessedFrontierUpdates (return . HM.adjust (+ diff) pointstamp)

@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveAnyClass  #-}
+{-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE GADTs           #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -19,13 +21,14 @@ import qualified Data.List               as L
 import           Data.Proxy
 import           Data.Vector             (Vector)
 import qualified Data.Vector             as V
+import           GHC.Generics            (Generic)
 
-newtype Node = Node { nodeId :: Int } deriving (Eq, Show, Ord)
+newtype Node = Node { nodeId :: Int } deriving (Eq, Show, Ord, Generic, Hashable)
 
 data NodeInput = NodeInput
   { nodeInputNode  :: Node
   , nodeInputIndex :: Int
-  } deriving (Eq, Show, Ord)
+  } deriving (Eq, Show, Ord, Generic, Hashable)
 
 newtype Mapper = Mapper { mapper :: Row -> Row }
 newtype Reducer = Reducer { reducer :: Value -> Row -> Word64 -> Row }
@@ -131,7 +134,7 @@ specToState _ = return NoState
 
 ----
 
-newtype Subgraph = Subgraph { subgraphId :: Int } deriving (Eq, Show)
+newtype Subgraph = Subgraph { subgraphId :: Int } deriving (Eq, Show, Generic, Hashable)
 
 data Graph = Graph
   { graphNodeSpecs       :: HashMap Int NodeSpec
