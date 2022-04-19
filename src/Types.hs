@@ -65,6 +65,27 @@ leastUpperBound ts1 ts2 =
   where upperTime = max (timestampTime ts1) (timestampTime ts2)
         upperCoords = L.zipWith max (timestampCoords ts1) (timestampCoords ts2)
 
+pushCoord :: (Ord a) => Timestamp a -> Timestamp a
+pushCoord ts =
+  Timestamp
+  { timestampTime = timestampTime ts
+  , timestampCoords = timestampCoords ts ++ [0]
+  }
+
+incCoord :: (Ord a) => Timestamp a -> Timestamp a
+incCoord ts =
+  Timestamp
+  { timestampTime = timestampTime ts
+  , timestampCoords = init (timestampCoords ts) ++ [last (timestampCoords ts) + 1]
+  }
+
+popCoord :: (Ord a) => Timestamp a -> Timestamp a
+popCoord ts =
+  Timestamp
+  { timestampTime = timestampTime ts
+  , timestampCoords = init (timestampCoords ts)
+  }
+
 infix 4 <.=
 (<.=) :: (CausalOrd a b) => a -> b -> Bool
 (<.=) x y
