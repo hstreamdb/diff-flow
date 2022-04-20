@@ -1,7 +1,8 @@
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DeriveGeneric      #-}
-{-# LANGUAGE RecordWildCards    #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Shard where
 
@@ -14,9 +15,11 @@ import           Control.Monad
 import           Data.Hashable           (Hashable)
 import qualified Data.HashMap.Lazy       as HM
 import qualified Data.List               as L
+import Data.Set (Set)
 import qualified Data.Set                as Set
 import qualified Data.Vector             as V
-import           GHC.Generics            (Generic)
+import GHC.Generics (Generic)
+import qualified Data.Vector.Fusion.Bundle.Monadic as HM
 
 data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch a
@@ -32,6 +35,36 @@ data Pointstamp a = Pointstamp
 deriving instance (Eq a) => Eq (Pointstamp a)
 deriving instance Generic (Pointstamp a)
 deriving instance (Hashable a) => Hashable (Pointstamp a)
+
+instance (Ord a) => Ord (Pointstamp a) where
+  compare ps1 ps2 =
+    case subgraph1 of
+      []     -> pointstampNodeInput ps1 `compare` pointstampNodeInput ps2
+      (x:xs) ->
+        case subgraph2 of
+          []     -> pointstampNodeInput ps1 `compare` pointstampNodeInput ps2
+          (y:ys) ->
+            if x /= y then
+              pointstampNodeInput ps1 `compare` pointstampNodeInput ps2 else
+              let tsOrd = timestampTime (pointstampTimestamp ps1) `compare`
+                          timestampTime (pointstampTimestamp ps2)
+               in case tsOrd of
+                    EQ -> let newTs1 = Timestamp
+                                       (head . timestampCoords $ pointstampTimestamp ps1)
+                                       (tail . timestampCoords $ pointstampTimestamp ps1)
+                              newTs2 = Timestamp
+                                       (head . timestampCoords $ pointstampTimestamp ps2)
+                                       (tail . timestampCoords $ pointstampTimestamp ps2)
+                              newPs1 = ps1 { pointstampSubgraphs = xs
+                                           , pointstampTimestamp = newTs1
+                                           }
+                              newPs2 = ps2 { pointstampSubgraphs = ys
+                                           , pointstampTimestamp = newTs2
+                                           }
+                           in newPs1 `compare` newPs2
+                    _  -> tsOrd
+    where subgraph1 = pointstampSubgraphs ps1
+          subgraph2 = pointstampSubgraphs ps2
 
 data Shard a = Shard
   { shardGraph                      :: Graph
@@ -229,3 +262,81 @@ queueFrontierChange Shard{..} nodeInput@NodeInput{..} ts diff = do
         modifyMVar_ shardUnprocessedFrontierUpdates (return . HM.delete pointstamp)
       else
         modifyMVar_ shardUnprocessedFrontierUpdates (return . HM.adjust (+ diff) pointstamp)
+
+-- True:  Updated
+-- False: Not updated
+applyFrontierChange :: (Hashable a, Ord a, Show a) => Shard a -> Node -> Timestamp a -> Int -> IO Bool
+applyFrontierChange shard@Shard{..} node ts diff = do
+  shardNodeFrontiers' <- readMVar shardNodeFrontiers
+  case HM.lookup (nodeId node) shardNodeFrontiers' of
+    Nothing  -> error $ "No matching node found: " <> show (nodeId node)
+    Just tsf -> do
+      let (newTsf, ftChanges) = updateTimestampsWithFrontier tsf ts diff
+      mapM_ (\ftChange -> do
+                mapM_ (\nodeInput ->
+                         queueFrontierChange shard nodeInput
+                           (frontierChangeTs ftChange) (frontierChangeDiff ftChange)
+                      ) (graphDownstreamNodes shardGraph HM.! nodeId node)
+            ) ftChanges
+      if L.null ftChanges then return False else return True
+
+
+processFrontierUpdates :: forall a. (Hashable a, Ord a, Show a) => Shard a -> IO ()
+processFrontierUpdates shard@Shard{..} = do
+  shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
+  updatedNodes <- go shardUnprocessedFrontierUpdates'
+  undefined
+  where
+    -- process pointstamps in causal order to ensure termination
+    go :: HM.HashMap (Pointstamp a) Int -> IO (Set Node) -- return: updatedNodes
+    go unprocessedNow = do
+      modifyMVar_ shardUnprocessedFrontierUpdates (return . HM.delete minKey)
+
+      let outputTs = case graphNodeSpecs shardGraph HM.! nodeId node of
+            TimestampPushSpec _ -> pushCoord inputTs
+            TimestampIncSpec  _ -> incCoord inputTs
+            TimestampPopSpec  _ -> popCoord inputTs
+            _                   -> inputTs
+      applyFrontierChange shard node outputTs diff
+
+      loopResult <- go $ HM.delete minKey unprocessedNow
+      return $ Set.insert node loopResult
+      where
+        minKey = L.minimum (HM.keys unprocessedNow)
+        node = nodeInputNode (pointstampNodeInput minKey)
+        inputTs = pointstampTimestamp minKey
+        diff = unprocessedNow HM.! minKey
+
+    specialActions :: Node -> IO ()
+    specialActions node = do
+      shardNodeStates' <- readMVar shardNodeStates
+      let nodeSpec  = graphNodeSpecs shardGraph HM.! nodeId node
+          nodeState = shardNodeStates' HM.! nodeId node
+      case nodeState of
+        IndexState index_m pendingChanges_m      -> do
+          shardNodeFrontiers' <- readMVar shardNodeFrontiers
+          pendingChanges <- readMVar pendingChanges_m
+          let (IndexSpec inputNode) = nodeSpec
+          let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
+          (newDataChangeBatch, newPendingChanges) <-
+            foldM (\(curDataChangeBatch,curPendingChanges) change -> do
+                      case tsfFrontier inputTsf `causalCompare` dcTimestamp change of
+                        PGT -> do
+                          applyFrontierChange shard node (dcTimestamp change) (-1)
+                          return ( updateDataChangeBatch curDataChangeBatch (++ [change])
+                                 , curPendingChanges
+                                 )
+                        _   -> return (curDataChangeBatch, curPendingChanges ++ [change])
+                  ) (emptyDataChangeBatch,[]) pendingChanges
+          swapMVar pendingChanges_m newPendingChanges
+          modifyMVar_ index_m
+            (\oldIndex -> return $ addChangeBatchToIndex oldIndex newDataChangeBatch)
+          emitChangeBatch shard node newDataChangeBatch
+        DistinctState index pendingCorrections_m -> do
+          let inputNode = V.head $ getInpusFromSpec nodeSpec
+          shardNodeFrontiers' <- readMVar shardNodeFrontiers
+          let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
+          pendingCorrections <- readMVar pendingCorrections_m
+          undefined
+        ReduceState index pendingCorrections_m   -> undefined
+        _ -> return ()
