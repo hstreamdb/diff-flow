@@ -147,6 +147,10 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
           toNodeInputs = graphDownstreamNodes shardGraph HM.! nodeId node
       mapM_
         (\toNodeInput -> do
+            -- ???: Is it correct? I do not see any reason to update the
+            -- input frontier(which then updates the output frontier!)
+            -- Also line 177
+            -- Remove both of them seems still OK...
             -- mapM_ (\ts -> queueFrontierChange shard (nodeInputNode toNodeInput) 1) dcbLowerBound
             modifyMVar_ shardUnprocessedChangeBatches
               (\xs -> let newCbi = ChangeBatchAtNodeInput
@@ -170,6 +174,10 @@ processChangeBatch shard@Shard{..} = do
       let nodeInput   = cbiNodeInput cbi
           changeBatch = cbiChangeBatch cbi
           node = nodeInputNode nodeInput
+      -- ???: Is it correct? I do not see any reason to update the
+      -- input frontier(which then updates the output frontier!)
+      -- Also line 150
+      -- Remove both of them seems still OK...
       --mapM_ (\ts -> queueFrontierChange shard (nodeInputNode nodeInput) (-1)) (dcbLowerBound changeBatch)
       case graphNodeSpecs shardGraph HM.! nodeId node of
         InputSpec -> error $ "Input node will never have work to do on its input"
