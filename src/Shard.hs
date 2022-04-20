@@ -340,3 +340,19 @@ processFrontierUpdates shard@Shard{..} = do
           undefined
         ReduceState index pendingCorrections_m   -> undefined
         _ -> return ()
+
+      where
+        goPendingCorrection :: Frontier a -> (Row, Set (Timestamp a)) -> IO ()
+        goPendingCorrection inputFt (key, timestamps) = do
+          (tssToCheck, ftChanges) <-
+            foldM (\(curTssToCheck,curFtChanges) ts -> do
+                      if inputFt `causalCompare` ts == PGT then do
+                        let newFtChange = FrontierChange
+                                          { frontierChangeTs   = ts
+                                          , frontierChangeDiff = -1
+                                          }
+                        return (curTssToCheck ++ [ts], curFtChanges ++ [newFtChange])
+                        else return (curTssToCheck,curFtChanges)
+                  ) ([],[]) timestamps
+          let realTimestamps = L.foldl (flip Set.delete) timestamps tssToCheck
+          undefined
