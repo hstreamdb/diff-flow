@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Shard where
 
@@ -20,12 +21,14 @@ import qualified Data.Set                as Set
 import qualified Data.Vector             as V
 import GHC.Generics (Generic)
 import Control.Concurrent (threadDelay)
+import Data.Foldable.Extra (findM)
 
 data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch a
   , cbiInputFrontier :: Maybe (Frontier a)
   , cbiNodeInput     :: NodeInput
   }
+deriving instance (Show a) => Show (ChangeBatchAtNodeInput a)
 
 data Pointstamp a = Pointstamp
   { pointstampNodeInput :: NodeInput
@@ -116,9 +119,6 @@ pushInput Shard{..} Node{..} change = do
     Nothing -> error $ "No matching node found: " <> show nodeId
     Just (InputState frontier_m unflushedChanges_m) -> do
       frontier <- readMVar frontier_m
-      print frontier
-      print (dcTimestamp change)
-      print $ frontier `causalCompare` (dcTimestamp change)
       case frontier <.= (dcTimestamp change) of
         False -> error $ "Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
         True  -> modifyMVar_ unflushedChanges_m
@@ -150,12 +150,13 @@ advanceInput shard@Shard{..} node@Node{..} ts = do
     Just (InputState frontier_m unflushedChanges_m) -> do
       frontier <- readMVar frontier_m
       let (newFrontier, ftChanges) = moveFrontier frontier MoveLater ts
-      putMVar frontier_m newFrontier
+      modifyMVar_ frontier_m (\_ -> return newFrontier)
       mapM_ (\change -> applyFrontierChange shard node (frontierChangeTs change) (frontierChangeDiff change)) ftChanges
     Just state -> error $ "Incorrect type of node state found: " <> show state
 
 emitChangeBatch :: (Hashable a, Ord a, Show a) => Shard a -> Node -> DataChangeBatch a -> IO ()
 emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
+  print $ "Emitting from node " <> show node <> " with DataChangeBatch: " <> show dcb
   case HM.lookup (nodeId node) (graphNodeSpecs shardGraph) of
     Nothing   -> error $ "No matching node found: " <> show (nodeId node)
     Just spec -> do
@@ -203,6 +204,8 @@ processChangeBatch shard@Shard{..} = do
   case shardUnprocessedChangeBatches' of
     []      -> return ()
     (cbi:_) -> do
+      modifyMVar_ shardUnprocessedChangeBatches (return . L.tail)
+      print $ "processing ChangeBatch... cbi=" <> show cbi
       let nodeInput   = cbiNodeInput cbi
           changeBatch = cbiChangeBatch cbi
           node = nodeInputNode nodeInput
@@ -438,52 +441,69 @@ processFrontierUpdates shard@Shard{..} = do
           undefined
 
 
-getOutputNodes :: Graph -> [Int]
-getOutputNodes Graph{..} = HM.keys $
+getOutputNodes :: Graph -> [Node]
+getOutputNodes Graph{..} = L.map Node . HM.keys $
   HM.filterWithKey (\i spec -> case spec of
                                  OutputSpec _ -> True
                                  _            -> False
                    ) graphNodeSpecs
 
+outputNodeNotEmpty :: Shard a -> Node -> IO Bool
+outputNodeNotEmpty Shard{..} node = do
+  shardNodeStates' <- readMVar shardNodeStates
+  let (OutputState dcbs_m) = shardNodeStates' HM.! (nodeId node)
+  dcbs <- readMVar dcbs_m
+  return . not $ L.null dcbs
+
 hasWork :: Shard a -> IO Bool
-hasWork Shard{..} = do
+hasWork shard@Shard{..} = do
   shardUnprocessedChangeBatches' <- readMVar shardUnprocessedChangeBatches
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
   shardNodeStates' <- readMVar shardNodeStates
-  outputStates <-
-    mapM (\i -> do
-            let (OutputState unpoppedChangeBatches_m) = (HM.!) shardNodeStates' i
-            readMVar unpoppedChangeBatches_m
-        ) outputNodes
+  anyOutput <- findM (outputNodeNotEmpty shard) outputNodes >>= \case
+    Nothing -> return False
+    Just _  -> return True
   return $
     not (L.null shardUnprocessedChangeBatches')    ||
     not (HM.null shardUnprocessedFrontierUpdates') ||
-    not (L.all L.null outputStates)
+    anyOutput
   where
     outputNodes = getOutputNodes shardGraph
+
+popOutput :: (Show a) => Shard a -> Node -> IO ()
+popOutput Shard{..} node = do
+  shardNodeStates' <- readMVar shardNodeStates
+  let (OutputState dcbs_m) = shardNodeStates' HM.! nodeId node
+  dcbs <- readMVar dcbs_m
+  mapM_ (\dcb -> do
+            print $ "---> Output DataChangeBatch: " <> show dcb
+        ) dcbs
+  modifyMVar_ dcbs_m (\_ -> return [])
 
 doWork :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
 doWork shard@Shard{..} = do
   shardUnprocessedChangeBatches' <- readMVar shardUnprocessedChangeBatches
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
   shardNodeStates' <- readMVar shardNodeStates
-  outputStates <-
-    mapM (\i -> do
-            let (OutputState unpoppedChangeBatches_m) = (HM.!) shardNodeStates' i
-            readMVar unpoppedChangeBatches_m
-        ) outputNodes
-  if not (L.null shardUnprocessedChangeBatches') then
+  if not (L.null shardUnprocessedChangeBatches') then do
+    print $ "=== Working (processChangeBatch)..."
     processChangeBatch shard else
-    if not (L.null shardUnprocessedFrontierUpdates') then
-      processFrontierUpdates shard else
-      if not (L.all L.null outputStates) then do
-        let (Just unpoppedDcbs) = L.find (not . L.null) outputStates
-        mapM_ print unpoppedDcbs
-        else return ()
+    if not (L.null shardUnprocessedFrontierUpdates') then do
+      print $ "=== Working (processFrontierUpdates)..."
+      processFrontierUpdates shard else do
+      findM (outputNodeNotEmpty shard) outputNodes >>= \case
+        Nothing -> return ()
+        Just node -> do
+          print $ "=== Working (popOut)..."
+          popOutput shard node
+          print "=== Popout done."
   where
     outputNodes = getOutputNodes shardGraph
 
 run :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
 run shard = forever $ do
   work <- hasWork shard
-  if work then doWork shard else threadDelay 2000000
+  print $ "Loop: still has work?" <> show work
+  if work then do
+    doWork shard else do
+    threadDelay 2000000

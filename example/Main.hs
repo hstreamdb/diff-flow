@@ -10,6 +10,7 @@ import Control.Concurrent
 import Control.Monad
 import Data.Aeson (Value (..))
 import Data.Word
+import qualified Data.HashMap.Lazy as HM
 
 main :: IO ()
 main = do
@@ -25,5 +26,6 @@ main = do
   pushInput shard node_1 (DataChange [String "aaa"] (Timestamp (0 :: Word32) []) 1)
   pushInput shard node_1 (DataChange [String "bbb"] (Timestamp (0 :: Word32) []) 1)
   flushInput shard node_1
+  advanceInput shard node_1 (Timestamp 1 [])
 
   threadDelay 10000000
