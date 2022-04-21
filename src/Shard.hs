@@ -95,21 +95,20 @@ pushInput Shard{..} Node{..} change = do
 --
 --  |INPUT NODE| -> ...
 --  (unflushed)
-flushInput :: (Ord a) => Shard a -> Node -> IO ()
+flushInput :: (Hashable a, Ord a, Show a) => Shard a -> Node -> IO ()
 flushInput shard@Shard{..} node@Node{..} = do
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
     Nothing -> error $ "No matching node found: " <> show nodeId
     Just (InputState frontier_m unflushedChanges_m) -> do
       unflushedChangeBatch <- readMVar unflushedChanges_m
-      undefined
-      --emitChangeBatch shard node unflushedChangeBatch
+      emitChangeBatch shard node unflushedChangeBatch
     Just state -> error $ "Incorrect type of node state found: " <> show state
 
 --
 --           Timestamp         -> |INPUT NODE| -> ...
 --  (update frontier to this)
-advanceInput :: (Ord a, Show a) => Shard a -> Node -> Timestamp a -> IO ()
+advanceInput :: (Hashable a, Ord a, Show a) => Shard a -> Node -> Timestamp a -> IO ()
 advanceInput shard@Shard{..} node@Node{..} ts = do
   flushInput shard node
   shardNodeStates' <- readMVar shardNodeStates
@@ -119,10 +118,10 @@ advanceInput shard@Shard{..} node@Node{..} ts = do
       frontier <- readMVar frontier_m
       let (newFrontier, ftChanges) = moveFrontier frontier MoveLater ts
       putMVar frontier_m newFrontier
-      -- mapM_ (\change -> applyFrontierChange shard node (frontierChangeTs change) (frontierChangeDiff change)) ftChanges
+      mapM_ (\change -> applyFrontierChange shard node (frontierChangeTs change) (frontierChangeDiff change)) ftChanges
     Just state -> error $ "Incorrect type of node state found: " <> show state
 
-emitChangeBatch :: (Ord a) => Shard a -> Node -> DataChangeBatch a -> IO ()
+emitChangeBatch :: (Hashable a, Ord a, Show a) => Shard a -> Node -> DataChangeBatch a -> IO ()
 emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
   case HM.lookup (nodeId node) (graphNodeSpecs shardGraph) of
     Nothing   -> error $ "No matching node found: " <> show (nodeId node)
@@ -151,7 +150,7 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
             -- input frontier(which then updates the output frontier!)
             -- Also line 177
             -- Remove both of them seems still OK...
-            -- mapM_ (\ts -> queueFrontierChange shard (nodeInputNode toNodeInput) 1) dcbLowerBound
+            mapM_ (\ts -> queueFrontierChange shard toNodeInput ts 1) dcbLowerBound
             modifyMVar_ shardUnprocessedChangeBatches
               (\xs -> let newCbi = ChangeBatchAtNodeInput
                             { cbiChangeBatch = dcb
@@ -178,7 +177,7 @@ processChangeBatch shard@Shard{..} = do
       -- input frontier(which then updates the output frontier!)
       -- Also line 150
       -- Remove both of them seems still OK...
-      --mapM_ (\ts -> queueFrontierChange shard (nodeInputNode nodeInput) (-1)) (dcbLowerBound changeBatch)
+      mapM_ (\ts -> queueFrontierChange shard nodeInput ts (-1)) (dcbLowerBound changeBatch)
       case graphNodeSpecs shardGraph HM.! nodeId node of
         InputSpec -> error $ "Input node will never have work to do on its input"
         MapSpec _ (Mapper mapper) -> do
@@ -197,7 +196,7 @@ processChangeBatch shard@Shard{..} = do
           let nodeFrontier = tsfFrontier $ shardNodeFrontiers' HM.! nodeId node
           mapM_ (\change -> do
                     assert (nodeFrontier <.= dcTimestamp change) (return ())
-                    --applyFrontierChange shard node (dcTimestamp change) 1
+                    applyFrontierChange shard node (dcTimestamp change) 1
                 ) (dcbChanges changeBatch)
           let (IndexState _ pendingChanges_m) = shardNodeStates' HM.! nodeId node
           modifyMVar_ pendingChanges_m (\xs -> return $ xs ++ dcbChanges changeBatch)
