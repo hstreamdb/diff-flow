@@ -31,7 +31,7 @@ data NodeInput = NodeInput
   } deriving (Eq, Show, Ord, Generic, Hashable)
 
 newtype Mapper = Mapper { mapper :: Row -> Row }
-newtype Reducer = Reducer { reducer :: Value -> Row -> Word64 -> Row }
+newtype Reducer = Reducer { reducer :: Value -> Row -> Word64 -> (Value, Row) }
 
 {-
 class HasIndex a where
@@ -149,11 +149,17 @@ data GraphBuilder = GraphBuilder
   , graphBuilderSubgraphParents :: Vector Subgraph
   }
 
+emptyGraphBuilder :: GraphBuilder
+emptyGraphBuilder = GraphBuilder V.empty V.empty V.empty
+
 addSubgraph :: GraphBuilder -> Subgraph -> (GraphBuilder, Subgraph)
 addSubgraph builder@GraphBuilder{..} parent =
   ( builder{ graphBuilderSubgraphParents = V.snoc graphBuilderSubgraphParents parent}
   , Subgraph {subgraphId = V.length graphBuilderSubgraphParents + 1}
   )
+
+addSubgraph' :: GraphBuilder -> Subgraph -> GraphBuilder
+addSubgraph' builder parent = fst $ addSubgraph builder parent
 
 addNode :: GraphBuilder -> Subgraph -> NodeSpec -> (GraphBuilder, Node)
 addNode builder@GraphBuilder{..} subgraph spec =
@@ -162,6 +168,9 @@ addNode builder@GraphBuilder{..} subgraph spec =
   , newNode
   )
   where newNode = Node { nodeId = V.length graphBuilderNodeSpecs }
+
+addNode' :: GraphBuilder -> Subgraph -> NodeSpec -> GraphBuilder
+addNode' builder sub spec = fst $ addNode builder sub spec
 
 connectLoop :: GraphBuilder -> Node -> Node -> GraphBuilder
 connectLoop builder@GraphBuilder{..} later earlier =

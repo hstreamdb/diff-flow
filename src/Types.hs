@@ -59,6 +59,13 @@ instance (Ord a) => CausalOrd (Timestamp a) (Timestamp a) where
           compRes = (timestampTime ts1 `compare` timestampTime ts2) :
                     L.zipWith compare (timestampCoords ts1) (timestampCoords ts2)
 
+leastTimestamp :: (Bounded a) => Int -> Timestamp a
+leastTimestamp coords =
+  Timestamp
+  { timestampTime = minBound
+  , timestampCoords = take coords [0..]
+  }
+
 leastUpperBound :: (Ord a) => Timestamp a -> Timestamp a -> Timestamp a
 leastUpperBound ts1 ts2 =
   Timestamp { timestampTime = upperTime, timestampCoords = upperCoords }
@@ -167,6 +174,13 @@ instance (Show a) => Show (TimestampsWithFrontier a) where
   show TimestampsWithFrontier{..} = "[\n\tTimestamps: " <> show tsfTimestamps
                                   <> "\n\tFrontier: " <> show tsfFrontier
                                   <> "\n]"
+
+emptyTimestampsWithFrontier :: TimestampsWithFrontier a
+emptyTimestampsWithFrontier =
+  TimestampsWithFrontier
+  { tsfTimestamps = MultiSet.empty
+  , tsfFrontier   = Set.empty
+  }
 
 updateTimestampsWithFrontier :: (Ord a)
                              => TimestampsWithFrontier a
