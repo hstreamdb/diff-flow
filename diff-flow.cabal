@@ -67,3 +67,22 @@ test-suite lib-test
   default-language:   Haskell2010
   build-tool-depends: hspec-discover:hspec-discover ==2.*
   ghc-options:        -threaded -rtsopts -with-rtsopts=-N
+
+executable example
+  main-is:          example/Main.hs
+  build-depends:
+    , aeson
+    , base                  ^>=4.14.3.0
+    , containers
+    , diff-flow
+    , hashable
+    , hspec
+    , multiset
+    , text
+    , time
+    , unordered-containers
+    , vector
+
+  default-language: Haskell2010
+  ghc-options:
+    -threaded -rtsopts -with-rtsopts=-N
