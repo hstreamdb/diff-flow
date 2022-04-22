@@ -135,7 +135,9 @@ flushInput shard@Shard{..} node@Node{..} = do
     Nothing -> error $ "No matching node found: " <> show nodeId
     Just (InputState frontier_m unflushedChanges_m) -> do
       unflushedChangeBatch <- readMVar unflushedChanges_m
-      emitChangeBatch shard node unflushedChangeBatch
+      modifyMVar_ unflushedChanges_m (return . const emptyDataChangeBatch)
+      unless (L.null $ dcbChanges unflushedChangeBatch) $
+        emitChangeBatch shard node unflushedChangeBatch
     Just state -> error $ "Incorrect type of node state found: " <> show state
 
 --
