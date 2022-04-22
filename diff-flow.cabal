@@ -22,7 +22,7 @@ library
 
   build-depends:
     , aeson
-    , base                  ^>=4.14.3.0
+    , base                  >=4.11 && <5
     , containers
     , extra
     , hashable
@@ -41,7 +41,7 @@ test-suite lib-test
   hs-source-dirs:     test
   build-depends:
     , aeson
-    , base                  ^>=4.14.3.0
+    , base                  >=4.11 && <5
     , containers
     , diff-flow
     , hashable
@@ -59,7 +59,7 @@ executable example
   main-is:          example/Main.hs
   build-depends:
     , aeson
-    , base                  ^>=4.14.3.0
+    , base                  >=4.11 && <5
     , containers
     , diff-flow
     , hashable
