@@ -14,10 +14,38 @@ import           Types
 
 spec :: Spec
 spec = describe "TypesSpec" $ do
+  timestampOrder
+  timestampLub
   timestampsWithFrontier
   dataChangeBatch
+  frontierMove
+  frontierOrder
   index
 
+timestampOrderChecker :: (Ord a)
+                      => Timestamp a
+                      -> Timestamp a
+                      -> PartialOrdering
+                      -> Bool
+timestampOrderChecker ts1 ts2 expectedCausalOrd =
+  causalOrd == expectedCausalOrd &&
+  reversedCausalOrd == revCausalOrd expectedCausalOrd &&
+  (causalOrd == PNONE || causalOrdtoOrd causalOrd == ts1 `compare` ts2) &&
+  ts1 <.= leastUpperBound ts1 ts2 &&
+  ts2 <.= leastUpperBound ts1 ts2
+  where
+    causalOrd = ts1 `causalCompare` ts2
+    reversedCausalOrd = ts2 `causalCompare` ts1
+    revCausalOrd :: PartialOrdering -> PartialOrdering
+    revCausalOrd PNONE = PNONE
+    revCausalOrd PEQ   = PEQ
+    revCausalOrd PLT   = PGT
+    revCausalOrd PGT   = PLT
+    causalOrdtoOrd :: PartialOrdering -> Ordering
+    causalOrdtoOrd PEQ = EQ
+    causalOrdtoOrd PLT = LT
+    causalOrdtoOrd PGT = GT
+    causalOrdtoOrd PNONE = error "unreachable"
 
 updateTimestampsWithFrontierChecker :: (Ord a, Show a)
                                     => MultiSet (Timestamp a) -- initial timestamps
@@ -48,6 +76,62 @@ addChangeBatchToIndexChecker :: (Hashable a, Ord a, Show a)
 addChangeBatchToIndexChecker batches expectedIndex = expectedIndex == actualIndex
   where actualIndex =
           L.foldl addChangeBatchToIndex (Index []) batches
+
+timestampOrder :: Spec
+timestampOrder = describe "TimestampOrder" $ do
+  it "timestamp should obey CausalOrder; CausalOrder's reverse property; CausalOrder should be compatible with Ord; ts <.= lub" $ do
+    timestampOrderChecker
+      (Timestamp 0 [])
+      (Timestamp 0 [])
+      PEQ
+      `shouldBe` True
+    timestampOrderChecker
+      (Timestamp 0 [])
+      (Timestamp 1 [])
+      PLT
+      `shouldBe` True
+    timestampOrderChecker
+      (Timestamp 1 [])
+      (Timestamp 0 [])
+      PGT
+      `shouldBe` True
+    timestampOrderChecker
+      (Timestamp 0 [0])
+      (Timestamp 0 [0])
+      PEQ
+      `shouldBe` True
+    timestampOrderChecker
+      (Timestamp 0 [0])
+      (Timestamp 1 [0])
+      PLT
+      `shouldBe` True
+    timestampOrderChecker
+      (Timestamp 0 [0])
+      (Timestamp 0 [1])
+      PLT
+      `shouldBe` True
+    timestampOrderChecker
+      (Timestamp 0 [0])
+      (Timestamp 1 [1])
+      PLT
+      `shouldBe` True
+    timestampOrderChecker
+      (Timestamp 1 [0])
+      (Timestamp 0 [1])
+      PNONE
+      `shouldBe` True
+
+timestampLub :: Spec
+timestampLub = describe "TimestampLub" $ do
+  it "Timestamp least upper bound" $ do
+    Timestamp 0 [] `leastUpperBound` Timestamp 0 [] `shouldBe` Timestamp 0 []
+    Timestamp 0 [] `leastUpperBound` Timestamp 1 [] `shouldBe` Timestamp 1 []
+    Timestamp 1 [] `leastUpperBound` Timestamp 0 [] `shouldBe` Timestamp 1 []
+    Timestamp 0 [0] `leastUpperBound` Timestamp 0 [0] `shouldBe` Timestamp 0 [0]
+    Timestamp 0 [0] `leastUpperBound` Timestamp 1 [0] `shouldBe` Timestamp 1 [0]
+    Timestamp 0 [0] `leastUpperBound` Timestamp 0 [1] `shouldBe` Timestamp 0 [1]
+    Timestamp 0 [0] `leastUpperBound` Timestamp 1 [1] `shouldBe` Timestamp 1 [1]
+    Timestamp 1 [0] `leastUpperBound` Timestamp 0 [1] `shouldBe` Timestamp 1 [1]
 
 timestampsWithFrontier :: Spec
 timestampsWithFrontier = describe "TimestampsWithFrontier" $ do
@@ -154,6 +238,56 @@ dataChangeBatch = describe "DataChangeBatch" $ do
       [ DataChange [String "a"] (Timestamp  0         []) 1]
       `shouldBe` True
 
+
+frontierMove :: Spec
+frontierMove = describe "FrontierMove" $ do
+  it "move frontier" $ do
+    moveFrontier Set.empty MoveLater (Timestamp 0 [0])
+      `shouldBe` ( Set.singleton (Timestamp 0 [0])
+                 , [FrontierChange (Timestamp 0 [0]) 1]
+                 )
+    moveFrontier (Set.singleton (Timestamp 0 [0])) MoveLater (Timestamp 0 [1])
+      `shouldBe` ( Set.singleton (Timestamp 0 [1])
+                 , [ FrontierChange (Timestamp 0 [1]) 1
+                   , FrontierChange (Timestamp 0 [0]) (-1)
+                   ]
+                 )
+    moveFrontier (Set.singleton (Timestamp 0 [1])) MoveEarlier (Timestamp 0 [0])
+      `shouldBe` ( Set.singleton (Timestamp 0 [0])
+                 , [ FrontierChange (Timestamp 0 [0]) 1
+                   , FrontierChange (Timestamp 0 [1]) (-1)
+                   ]
+                 )
+    moveFrontier (Set.fromList [Timestamp 0 [1], Timestamp 1 [0]]) MoveLater (Timestamp 1 [1])
+      `shouldBe` ( Set.singleton (Timestamp 1 [1])
+                 , [ FrontierChange (Timestamp 1 [1]) 1
+                   , FrontierChange (Timestamp 1 [0]) (-1)
+                   , FrontierChange (Timestamp 0 [1]) (-1)
+                   ]
+                 )
+    moveFrontier (Set.fromList [Timestamp 0 [0,1], Timestamp 0 [1,0]]) MoveLater (Timestamp 1 [0,0])
+      `shouldBe` ( Set.fromList [Timestamp 0 [0,1], Timestamp 0 [1,0], Timestamp 1 [0,0]]
+                 , [ FrontierChange (Timestamp 1 [0,0]) 1
+                   ]
+                 )
+
+frontierOrder :: Spec
+frontierOrder = describe "FrontierOrder" $ do
+  it "frontier causal order with timestamp" $ do
+    Set.singleton (Timestamp (0 :: Int) [0])
+      `causalCompare` Timestamp (0 :: Int) [0] `shouldBe` PEQ
+    Set.singleton (Timestamp (0 :: Int) [0])
+      `causalCompare` Timestamp (0 :: Int) [1] `shouldBe` PLT
+    Set.singleton (Timestamp (0 :: Int) [1])
+      `causalCompare` Timestamp (0 :: Int) [0] `shouldBe` PGT
+    Set.singleton (Timestamp (0 :: Int) [1])
+      `causalCompare` Timestamp (1 :: Int) [0] `shouldBe` PNONE
+    Set.fromList [Timestamp (1 :: Int) [0], Timestamp 0 [1]]
+      `causalCompare` Timestamp (0 :: Int) [2] `shouldBe` PLT
+    Set.fromList [Timestamp (1 :: Int) [0], Timestamp 0 [1]]
+      `causalCompare` Timestamp (2 :: Int) [0] `shouldBe` PLT
+    Set.fromList [Timestamp (2 :: Int) [0], Timestamp 0 [2]]
+      `causalCompare` Timestamp (1 :: Int) [1] `shouldBe` PNONE
 
 index :: Spec
 index = describe "Index" $ do
