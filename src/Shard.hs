@@ -457,8 +457,28 @@ processFrontierUpdates shard@Shard{..} = do
                         else return (curTssToCheck,curFtChanges)
                   ) ([],[]) timestamps
           let realTimestamps = L.foldl (flip Set.delete) timestamps tssToCheck
-          undefined
+          let inputChanges  = getChangesForKey inputIndex  (== key)
+              outputChanges = getChangesForKey outputIndex (== key)
+          mapM_ (\tsToCheck -> do
+                    let inputBag = L.foldl (\acc DataChange{..} ->
+                                              MultiSet.insertMany dcRow dcDiff acc)
+                                   MultiSet.empty
+                                   (L.filter (\change ->
+                                                dcTimestamp change <.= tsToCheck)
+                                     inputChanges)
+                    let sortedInputs = L.sort $ MultiSet.toOccurList inputBag
+                    let inputValue = L.foldl (\acc (x,_) -> fst $ reducer acc x) initValue sortedInputs
 
+                    let outputChanges' =
+                          L.map (\change -> change {dcDiff = - (dcDiff change)})
+                            (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
+                        newOutput = DataChange (key ++ [inputValue]) tsToCheck 1
+                        outputChanges'' = outputChanges' ++ [newOutput]
+                    let changeBatch = mkDataChangeBatch outputChanges''
+                    unless (L.null $ dcbChanges changeBatch) $
+                      emitChangeBatch shard node changeBatch
+                    mapM_ (\FrontierChange{..} -> applyFrontierChange shard node frontierChangeTs frontierChangeDiff) ftChanges
+                ) tssToCheck
 
 getOutputNodes :: Graph -> [Node]
 getOutputNodes Graph{..} = L.map Node . HM.keys $

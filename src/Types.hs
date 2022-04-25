@@ -302,3 +302,14 @@ addChangeBatchToIndex Index{..} changeBatch =
          in adjustBatches ((L.init . L.init $ l) ++ [newBatch])
       where lastBatch = L.last l
             secondLastBatch = L.last . L.init $ l
+
+-- FIXME: very low performance. Should take advantage of properties of DataChangeBatch
+-- WARNING: result is backwards
+getChangesForKey :: (Ord a) => Index a -> (Row -> Bool) -> [DataChange a]
+getChangesForKey (Index batches) p =
+  L.foldl (\acc batch ->
+           let resultOfThisBatch =
+                 L.foldl (\acc change@DataChange{..} ->
+                          if p dcRow then change:acc else acc) [] (dcbChanges batch)
+            in resultOfThisBatch ++ acc
+          ) [] batches
