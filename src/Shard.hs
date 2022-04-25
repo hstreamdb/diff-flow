@@ -364,6 +364,7 @@ applyFrontierChange shard@Shard{..} node ts diff = do
     Nothing  -> error $ "No matching node found: " <> show (nodeId node)
     Just tsf -> do
       let (newTsf, ftChanges) = updateTimestampsWithFrontier tsf ts diff
+      modifyMVar_ shardNodeFrontiers (return . HM.insert (nodeId node) newTsf)
       mapM_ (\ftChange -> do
                 mapM_ (\nodeInput ->
                          queueFrontierChange shard nodeInput
