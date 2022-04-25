@@ -18,6 +18,7 @@ import qualified Data.HashMap.Lazy       as HM
 import qualified Data.List               as L
 import Data.Set (Set)
 import qualified Data.Set                as Set
+import qualified Data.MultiSet           as MultiSet
 import qualified Data.Vector             as V
 import GHC.Generics (Generic)
 import Control.Concurrent (threadDelay)
@@ -207,7 +208,6 @@ processChangeBatch shard@Shard{..} = do
     []      -> return ()
     (cbi:_) -> do
       modifyMVar_ shardUnprocessedChangeBatches (return . L.tail)
-      print $ "processing ChangeBatch... cbi=" <> show cbi
       let nodeInput   = cbiNodeInput cbi
           changeBatch = cbiChangeBatch cbi
           node = nodeInputNode nodeInput
@@ -229,7 +229,8 @@ processChangeBatch shard@Shard{..} = do
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
-          emitChangeBatch shard node outputChangeBatch
+          unless (L.null $ dcbChanges outputChangeBatch) $
+            emitChangeBatch shard node outputChangeBatch
         IndexSpec _ -> do
           let nodeFrontier = tsfFrontier $ shardNodeFrontiers' HM.! nodeId node
           mapM_ (\change -> do
@@ -253,7 +254,8 @@ processChangeBatch shard@Shard{..} = do
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
-          emitChangeBatch shard node outputChangeBatch
+          unless (L.null $ dcbChanges outputChangeBatch) $
+            emitChangeBatch shard node outputChangeBatch
         TimestampIncSpec _ -> do
           let outputChangeBatch = L.foldl
                 (\acc change -> do
@@ -265,7 +267,8 @@ processChangeBatch shard@Shard{..} = do
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
-          emitChangeBatch shard node outputChangeBatch
+          unless (L.null $ dcbChanges outputChangeBatch) $
+            emitChangeBatch shard node outputChangeBatch
         TimestampPopSpec _ -> do
           let outputChangeBatch = L.foldl
                 (\acc change -> do
@@ -277,9 +280,11 @@ processChangeBatch shard@Shard{..} = do
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
-          emitChangeBatch shard node outputChangeBatch
+          unless (L.null $ dcbChanges outputChangeBatch) $
+            emitChangeBatch shard node outputChangeBatch
         UnionSpec _ _ -> do
-          emitChangeBatch shard node changeBatch
+          unless (L.null $ dcbChanges changeBatch) $
+            emitChangeBatch shard node changeBatch
         DistinctSpec _ -> do
           let (DistinctState index_m pendingCorrections_m) = shardNodeStates' HM.! nodeId node
           pendingCorrections <- readMVar pendingCorrections_m
@@ -304,7 +309,7 @@ processChangeBatch shard@Shard{..} = do
                                       void $ applyFrontierChange shard node lub 1
                                   ) timestamps
                 ) (dcbChanges changeBatch)
-        ReduceSpec _ _ _ _ -> do
+        ReduceSpec _ _ _ -> do
           let (ReduceState _ pendingCorrections_m) = shardNodeStates' HM.! nodeId node
           pendingCorrections <- readMVar pendingCorrections_m
           mapM_ (\change -> do
@@ -416,19 +421,30 @@ processFrontierUpdates shard@Shard{..} = do
                   ) emptyDataChangeBatch pendingChanges
           modifyMVar_ index_m
             (\oldIndex -> return $ addChangeBatchToIndex oldIndex newDataChangeBatch)
-          emitChangeBatch shard node newDataChangeBatch
-        DistinctState index pendingCorrections_m -> do
+          unless (L.null $ dcbChanges newDataChangeBatch) $
+            emitChangeBatch shard node newDataChangeBatch
+        DistinctState index_m pendingCorrections_m -> do
           let inputNode = V.head $ getInpusFromSpec nodeSpec
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
+          shardNodeStates' <- readMVar shardNodeStates
+          inputIndex  <- getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
+          outputIndex <- readMVar index_m
           pendingCorrections <- readMVar pendingCorrections_m
           undefined
-        ReduceState index pendingCorrections_m   -> undefined
+        ReduceState index_m pendingCorrections_m   -> do
+          let inputNode = V.head $ getInpusFromSpec nodeSpec
+          shardNodeFrontiers' <- readMVar shardNodeFrontiers
+          let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
+          shardNodeStates' <- readMVar shardNodeStates
+          inputIndex  <- getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
+          outputIndex <- readMVar index_m
+          pendingCorrections <- readMVar pendingCorrections_m
+          mapM_ (goPendingCorrection nodeSpec (tsfFrontier inputTsf) inputIndex outputIndex) (HM.toList pendingCorrections)
         _ -> return ()
-
       where
-        goPendingCorrection :: Frontier a -> (Row, Set (Timestamp a)) -> IO ()
-        goPendingCorrection inputFt (key, timestamps) = do
+        goPendingCorrection :: NodeSpec -> Frontier a -> Index a -> Index a -> (Row, Set (Timestamp a)) -> IO ()
+        goPendingCorrection (ReduceSpec _ initValue (Reducer reducer)) inputFt inputIndex outputIndex (key, timestamps) = do
           (tssToCheck, ftChanges) <-
             foldM (\(curTssToCheck,curFtChanges) ts -> do
                       if inputFt `causalCompare` ts == PGT then do
@@ -436,7 +452,7 @@ processFrontierUpdates shard@Shard{..} = do
                                           { frontierChangeTs   = ts
                                           , frontierChangeDiff = -1
                                           }
-                        return (curTssToCheck ++ [ts], curFtChanges ++ [newFtChange])
+                        return (ts:curTssToCheck, curFtChanges ++ [newFtChange])
                         else return (curTssToCheck,curFtChanges)
                   ) ([],[]) timestamps
           let realTimestamps = L.foldl (flip Set.delete) timestamps tssToCheck
