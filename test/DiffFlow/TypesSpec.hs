@@ -237,6 +237,18 @@ dataChangeBatch = describe "DataChangeBatch" $ do
       ]
       [ DataChange [String "a"] (Timestamp  0         []) 1]
       `shouldBe` True
+    mkDataChangeBatch
+      [ DataChange [Number 1] (Timestamp (0 :: Int) []) 1
+      , DataChange [Number 2] (Timestamp (0 :: Int) []) 1
+      , DataChange [Number 3] (Timestamp (3 :: Int) []) 1]
+      `shouldBe`
+      DataChangeBatch
+      { dcbLowerBound = Set.singleton (Timestamp 0 [])
+      , dcbChanges = [ DataChange [Number 1.0] (Timestamp 0 []) 1
+                     , DataChange [Number 2.0] (Timestamp 0 []) 1
+                     , DataChange [Number 3.0] (Timestamp 3 []) 1
+                     ]
+      }
 
 
 frontierMove :: Spec
@@ -270,6 +282,12 @@ frontierMove = describe "FrontierMove" $ do
                  , [ FrontierChange (Timestamp 1 [0,0]) 1
                    ]
                  )
+    moveFrontier Set.empty MoveEarlier (Timestamp 0 [])
+      `shouldBe` (Set.singleton (Timestamp 0 [])
+                 , [FrontierChange (Timestamp 0 []) 1])
+    moveFrontier (Set.singleton (Timestamp 0 [])) MoveEarlier (Timestamp 3 [])
+      `shouldBe` (Set.singleton (Timestamp 0 [])
+                 , [])
 
 frontierOrder :: Spec
 frontierOrder = describe "FrontierOrder" $ do
