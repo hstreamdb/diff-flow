@@ -129,9 +129,11 @@ instance (Show a) => Show (FrontierChange a) where
 moveFrontier :: (Ord a, Show a)
              => Frontier a -> MoveDirection -> Timestamp a
              -> (Frontier a, [FrontierChange a])
-moveFrontier ft direction ts = (Set.insert ts ft', FrontierChange ts 1 : changes)
+moveFrontier ft direction ts =
+  if goOn then (Set.insert ts ft', FrontierChange ts 1 : changes)
+               else (ft', changes)
   where
-    (_, changes) = case direction of
+    (goOn, changes) = case direction of
       MoveLater   ->
         Set.foldl (\(goOn,acc) x ->
           case goOn of
