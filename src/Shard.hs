@@ -516,7 +516,7 @@ popOutput Shard{..} node = do
   dcbs <- readMVar dcbs_m
   mapM_ (\dcb -> do
             print $ "---> Output DataChangeBatch: " <> show dcb
-        ) dcbs
+        ) (L.reverse dcbs)
   modifyMVar_ dcbs_m (\_ -> return [])
 
 doWork :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
