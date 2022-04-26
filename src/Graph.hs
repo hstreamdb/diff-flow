@@ -31,7 +31,8 @@ data NodeInput = NodeInput
   } deriving (Eq, Show, Ord, Generic, Hashable)
 
 newtype Mapper = Mapper { mapper :: Row -> Row }
-newtype Reducer = Reducer { reducer :: Value -> Row -> (Value, Row) }
+newtype Reducer = Reducer { reducer :: Value -> Row -> Value }
+type KeyGenerator = Row -> Row
 
 {-
 class HasIndex a where
@@ -58,7 +59,7 @@ data NodeSpec
   | TimestampPopSpec  Node                      -- input
   | UnionSpec         Node Node                 -- input1, input2
   | DistinctSpec      Node                      -- input
-  | ReduceSpec        Node Value Reducer -- input, key_columns, init, reducer
+  | ReduceSpec        Node Value KeyGenerator Reducer -- input, init, kengen, reducer
 
 instance Show NodeSpec where
   show InputSpec = "InputSpec"
@@ -71,17 +72,17 @@ instance Show NodeSpec where
   show (TimestampPopSpec _) = "TimestampPopSpec"
   show (UnionSpec _ _) = "UnionSpec"
   show (DistinctSpec _) = "DistinctSpec"
-  show (ReduceSpec _ _ _) = "ReduceSpec"
+  show (ReduceSpec _ _ _ _) = "ReduceSpec"
 
 outputIndex :: NodeSpec -> Bool
 outputIndex (IndexSpec _)        = True
 outputIndex (DistinctSpec _)     = True
-outputIndex (ReduceSpec _ _ _) = True
+outputIndex (ReduceSpec _ _ _ _) = True
 outputIndex _                    = False
 
 needIndex :: NodeSpec -> Bool
 needIndex (DistinctSpec _)     = True
-needIndex (ReduceSpec _ _ _) = True
+needIndex (ReduceSpec _ _ _ _) = True
 needIndex _                    = False
 
 getInpusFromSpec :: NodeSpec -> Vector Node
@@ -97,7 +98,7 @@ getInpusFromSpec (TimestampIncSpec m_node) = case m_node of
 getInpusFromSpec (TimestampPopSpec node) = V.singleton node
 getInpusFromSpec (UnionSpec node1 node2) = V.fromList [node1, node2]
 getInpusFromSpec (DistinctSpec node) = V.singleton node
-getInpusFromSpec (ReduceSpec node _ _) = V.singleton node
+getInpusFromSpec (ReduceSpec node _ _ _) = V.singleton node
 
 
 data NodeState a
@@ -144,7 +145,7 @@ specToState (DistinctSpec _) = do
   index <- newMVar $ Index []
   pendingCorrections <- newMVar HM.empty
   return $ DistinctState index pendingCorrections
-specToState (ReduceSpec _ _ _) = do
+specToState (ReduceSpec _ _ _ _) = do
   index <- newMVar $ Index []
   pendingCorrections <- newMVar HM.empty
   return $ ReduceState index pendingCorrections
