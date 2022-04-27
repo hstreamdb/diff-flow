@@ -218,7 +218,7 @@ buildGraph GraphBuilder{..} =
     nodeSpecs = V.ifoldl (\acc i x -> HM.insert i x acc) HM.empty graphBuilderNodeSpecs
     findSubgraphs :: Subgraph -> [Subgraph]
     findSubgraphs immSubgraph
-      | immId == 0 = []
+      | immId == 0 = [immSubgraph]
       | otherwise = immSubgraph:findSubgraphs (graphBuilderSubgraphParents V.! (immId - 1))
       where immId = subgraphId immSubgraph
     subgraphs = V.ifoldl (\acc i x ->
