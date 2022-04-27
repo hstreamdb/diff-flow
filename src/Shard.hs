@@ -23,6 +23,7 @@ import qualified Data.Vector             as V
 import GHC.Generics (Generic)
 import Control.Concurrent (threadDelay)
 import Data.Foldable.Extra (findM)
+import Data.Maybe (isNothing)
 
 data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch a
@@ -287,16 +288,19 @@ processChangeBatch shard@Shard{..} = do
             emitChangeBatch shard node changeBatch
         DistinctSpec _ -> do
           let (DistinctState index_m pendingCorrections_m) = shardNodeStates' HM.! nodeId node
-          pendingCorrections <- readMVar pendingCorrections_m
           mapM_ (\change -> do
+                    pendingCorrections <- readMVar pendingCorrections_m
                     let key = dcRow change
-                    let timestamps = case HM.lookup key pendingCorrections of
+                        corrExists = HM.lookup key pendingCorrections
+                    let timestamps = case corrExists of
                                        Nothing  -> Set.empty
                                        Just tss -> tss
+                    when (isNothing corrExists) $
+                      modifyMVar_ pendingCorrections_m (return . HM.insert key Set.empty)
                     case Set.member (dcTimestamp change) timestamps of
                       True  -> return ()
                       False -> do
-                        modifyMVar_ pendingCorrections_m (return . HM.insert key (Set.insert (dcTimestamp change) timestamps))
+                        modifyMVar_ pendingCorrections_m (return . HM.adjust (Set.insert (dcTimestamp change)) key)
                         applyFrontierChange shard node (dcTimestamp change) 1
                         mapM_ (\entry -> do
                                   curPendingCorrections <- readMVar pendingCorrections_m
@@ -305,22 +309,25 @@ processChangeBatch shard@Shard{..} = do
                                   case Set.member lub curTimestamps of
                                     True  -> return ()
                                     False -> do
-                                      modifyMVar_ pendingCorrections_m (return . HM.insert key (Set.insert lub curTimestamps))
+                                      modifyMVar_ pendingCorrections_m (return . HM.adjust (Set.insert lub) key)
                                       void $ applyFrontierChange shard node lub 1
-                                  ) timestamps
+                                  ) (Set.insert (dcTimestamp change) timestamps)
                 ) (dcbChanges changeBatch)
         ReduceSpec _ _ keygen _ -> do
           let (ReduceState _ pendingCorrections_m) = shardNodeStates' HM.! nodeId node
-          pendingCorrections <- readMVar pendingCorrections_m
           mapM_ (\change -> do
+                    pendingCorrections <- readMVar pendingCorrections_m
                     let key = keygen (dcRow change)
-                    let timestamps = case HM.lookup key pendingCorrections of
+                        corrExists = HM.lookup key pendingCorrections
+                    let timestamps = case corrExists of
                                        Nothing  -> Set.empty
                                        Just tss -> tss
+                    when (isNothing corrExists) $
+                      modifyMVar_ pendingCorrections_m (return . HM.insert key Set.empty)
                     case Set.member (dcTimestamp change) timestamps of
                       True  -> return ()
                       False -> do
-                        modifyMVar_ pendingCorrections_m (return . HM.insert key (Set.insert (dcTimestamp change) timestamps))
+                        modifyMVar_ pendingCorrections_m (return . HM.adjust (Set.insert (dcTimestamp change)) key)
                         applyFrontierChange shard node (dcTimestamp change) 1
                         mapM_ (\entry -> do
                                   curPendingCorrections <- readMVar pendingCorrections_m
@@ -329,9 +336,9 @@ processChangeBatch shard@Shard{..} = do
                                   case Set.member lub curTimestamps of
                                     True  -> return ()
                                     False -> do
-                                      modifyMVar_ pendingCorrections_m (return . HM.insert key (Set.insert lub curTimestamps))
+                                      modifyMVar_ pendingCorrections_m (return . HM.adjust (Set.insert lub) key)
                                       void $ applyFrontierChange shard node lub 1
-                                  ) timestamps
+                                  ) (Set.insert (dcTimestamp change) timestamps)
                 ) (dcbChanges changeBatch)
 
 queueFrontierChange :: (Hashable a, Ord a, Show a) => Shard a -> NodeInput -> Timestamp a -> Int -> IO ()
