@@ -75,7 +75,7 @@ data Shard a = Shard
   { shardGraph                      :: Graph
   , shardNodeStates                 :: MVar (HM.HashMap Int (NodeState a))
   , shardNodeFrontiers              :: MVar (HM.HashMap Int (TimestampsWithFrontier a))
-  , shardUnprocessedChangeBatches   :: MVar [ChangeBatchAtNodeInput a] -- cons!
+  , shardUnprocessedChangeBatches   :: MVar [ChangeBatchAtNodeInput a]
   , shardUnprocessedFrontierUpdates :: MVar (HM.HashMap (Pointstamp a) Int)
   }
 
@@ -189,14 +189,12 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
             -- Also line 177
             -- Remove both of them seems still OK...
             mapM_ (\ts -> queueFrontierChange shard toNodeInput ts 1) dcbLowerBound
-            modifyMVar_ shardUnprocessedChangeBatches
-              (\xs -> let newCbi = ChangeBatchAtNodeInput
-                            { cbiChangeBatch = dcb
-                            , cbiInputFrontier = inputFt
-                            , cbiNodeInput = toNodeInput
-                            }
-                       in return $ newCbi : xs
-              )
+            let newCbi = ChangeBatchAtNodeInput
+                         { cbiChangeBatch = dcb
+                         , cbiInputFrontier = inputFt
+                         , cbiNodeInput = toNodeInput
+                         }
+            modifyMVar_ shardUnprocessedChangeBatches (\xs -> return $ xs ++ [newCbi])
         ) toNodeInputs
 
 
