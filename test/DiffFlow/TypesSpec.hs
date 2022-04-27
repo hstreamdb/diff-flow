@@ -184,6 +184,14 @@ timestampsWithFrontier = describe "TimestampsWithFrontier" $ do
       (Set.fromList [Timestamp 0 [0]])
       [FrontierChange (Timestamp 0 [0]) 1]
       `shouldBe` True
+    updateTimestampsWithFrontierChecker
+      (MultiSet.fromList [Timestamp 0 [], Timestamp 3 [], Timestamp 4 []])
+      (Timestamp 0 [], -1)
+      (Set.fromList [Timestamp 3 []])
+      [ FrontierChange (Timestamp 0 []) (-1)
+      , FrontierChange (Timestamp 3 []) 1
+      ]
+      `shouldBe` True
 
 dataChangeBatch :: Spec
 dataChangeBatch = describe "DataChangeBatch" $ do

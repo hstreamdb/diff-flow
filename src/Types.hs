@@ -184,6 +184,7 @@ emptyTimestampsWithFrontier =
   , tsfFrontier   = Set.empty
   }
 
+-- FIXME: Very weird. Should be replaced with a more functional version
 updateTimestampsWithFrontier :: (Ord a)
                              => TimestampsWithFrontier a
                              -> Timestamp a
@@ -200,9 +201,15 @@ updateTimestampsWithFrontier TimestampsWithFrontier{..} ts diff
       -- to be inserted to the frontier to keep [frontier <.= each ts]
       True  -> let change = FrontierChange ts (-1)
                    frontierRemoved = Set.delete ts tsfFrontier
-                   frontierAdds = MultiSet.toSet $ MultiSet.filter (\x -> frontierRemoved `causalCompare` x == PNONE) (MultiSet.filter (\x -> x `causalCompare` ts == PGT) tsfTimestamps)
-                   frontierChanges = L.map (\x -> FrontierChange x 1) (Set.toList frontierAdds)
-                   frontierInserted = Set.foldl (flip Set.insert) frontierRemoved frontierAdds
+
+                   (frontierInserted, frontierAdds) =
+                     L.foldl (\(curFrontier,cand) x ->
+                                       if curFrontier `causalCompare` x == PNONE
+                                       then (Set.insert x curFrontier, cand ++ [x])
+                                       else (curFrontier,cand)) (frontierRemoved,[])
+                     (L.filter (\x -> x `causalCompare` ts == PGT) (MultiSet.toList timestampsInserted))
+
+                   frontierChanges = L.map (\x -> FrontierChange x 1) frontierAdds
                    tsf' = TimestampsWithFrontier timestampsInserted frontierInserted
                 in (tsf', change:frontierChanges)
     -- the item was not present but now got inserted. it is new!
