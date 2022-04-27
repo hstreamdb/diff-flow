@@ -436,7 +436,7 @@ processFrontierUpdates shard@Shard{..} = do
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
           shardNodeStates' <- readMVar shardNodeStates
-          inputIndex  <- getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
+          let inputIndex = getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
           outputIndex <- readMVar index_m
           pendingCorrections <- readMVar pendingCorrections_m
           undefined
@@ -445,14 +445,13 @@ processFrontierUpdates shard@Shard{..} = do
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
           shardNodeStates' <- readMVar shardNodeStates
-          inputIndex  <- getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
+          let inputIndex_m = getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
           pendingCorrections <- readMVar pendingCorrections_m
-          mapM_ (goPendingCorrection nodeSpec (tsfFrontier inputTsf) inputIndex index_m) (HM.toList pendingCorrections)
+          mapM_ (goPendingCorrection nodeSpec (tsfFrontier inputTsf) inputIndex_m index_m) (HM.toList pendingCorrections)
         _ -> return ()
       where
-        goPendingCorrection :: NodeSpec -> Frontier a -> Index a -> MVar (Index a) -> (Row, Set (Timestamp a)) -> IO ()
-        goPendingCorrection (ReduceSpec _ initValue keygen (Reducer reducer)) inputFt inputIndex outputIndex_m (row, timestamps) = do
-          outputIndex <- readMVar outputIndex_m
+        goPendingCorrection :: NodeSpec -> Frontier a -> MVar (Index a) -> MVar (Index a) -> (Row, Set (Timestamp a)) -> IO ()
+        goPendingCorrection (ReduceSpec _ initValue keygen (Reducer reducer)) inputFt inputIndex_m outputIndex_m (row, timestamps) = do
           let key = keygen row
           (tssToCheck, ftChanges) <-
             foldM (\(curTssToCheck,curFtChanges) ts -> do
@@ -465,9 +464,11 @@ processFrontierUpdates shard@Shard{..} = do
                         else return (curTssToCheck,curFtChanges)
                   ) ([],[]) timestamps
           let realTimestamps = L.foldl (flip Set.delete) timestamps tssToCheck
-          let inputChanges  = getChangesForKey inputIndex  (\row -> keygen row == key)
-              outputChanges = getChangesForKey outputIndex (\row -> keygen row == key)
           mapM_ (\tsToCheck -> do
+                    inputIndex  <- readMVar inputIndex_m
+                    outputIndex <- readMVar outputIndex_m
+                    let inputChanges  = getChangesForKey inputIndex  (\row -> keygen row == key)
+                        outputChanges = getChangesForKey outputIndex (\row -> keygen row == key)
                     let inputBag = L.foldl (\acc DataChange{..} ->
                                               MultiSet.insertMany dcRow dcDiff acc)
                                    MultiSet.empty
@@ -476,18 +477,17 @@ processFrontierUpdates shard@Shard{..} = do
                                      inputChanges)
                     let sortedInputs = L.sort $ MultiSet.toOccurList inputBag
                     let inputValue = L.foldl (\acc (x,_) -> reducer acc x) initValue sortedInputs
-
                     let outputChanges' =
                           L.map (\change -> change {dcDiff = - (dcDiff change)})
                             (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
-                        newOutput = DataChange (key ++ [inputValue]) tsToCheck 1
+                    let newOutput = DataChange (key ++ [inputValue]) tsToCheck 1
                         outputChanges'' = outputChanges' ++ [newOutput]
                     let changeBatch = mkDataChangeBatch outputChanges''
                     modifyMVar_ outputIndex_m (return . flip addChangeBatchToIndex changeBatch)
                     unless (L.null $ dcbChanges changeBatch) $
                       emitChangeBatch shard node changeBatch
                     mapM_ (\FrontierChange{..} -> applyFrontierChange shard node frontierChangeTs frontierChangeDiff) ftChanges
-                ) tssToCheck
+                ) (L.reverse tssToCheck)
 
 getOutputNodes :: Graph -> [Node]
 getOutputNodes Graph{..} = L.map Node . HM.keys $

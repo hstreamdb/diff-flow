@@ -119,10 +119,10 @@ instance Show (NodeState a) where
   show (ReduceState _ _)   = "ReduceState"
   show NoState             = "NodeState"
 
-getIndexFromState :: NodeState a -> IO (Index a)
-getIndexFromState (IndexState    index_m _) = readMVar index_m
-getIndexFromState (DistinctState index_m _) = readMVar index_m
-getIndexFromState (ReduceState   index_m _) = readMVar index_m
+getIndexFromState :: NodeState a -> MVar (Index a)
+getIndexFromState (IndexState    index_m _) = index_m
+getIndexFromState (DistinctState index_m _) = index_m
+getIndexFromState (ReduceState   index_m _) = index_m
 getIndexFromState _ = error "Trying getting index from a node which does not contains index"
 
 specToState :: (Show a, Ord a, Hashable a) => NodeSpec -> IO (NodeState a)
