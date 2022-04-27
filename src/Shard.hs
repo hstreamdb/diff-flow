@@ -485,7 +485,7 @@ processFrontierUpdates shard@Shard{..} = do
                     unless (L.null $ dcbChanges changeBatch) $
                       emitChangeBatch shard node changeBatch
                     mapM_ (\FrontierChange{..} -> applyFrontierChange shard node frontierChangeTs frontierChangeDiff) ftChanges
-                ) (L.reverse tssToCheck)
+                ) (L.sort tssToCheck)
 
 getOutputNodes :: Graph -> [Node]
 getOutputNodes Graph{..} = L.map Node . HM.keys $
