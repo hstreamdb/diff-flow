@@ -241,7 +241,7 @@ processChangeBatch shard@Shard{..} = do
         JoinSpec _ _ _ -> undefined
         OutputSpec _ -> do
           let (OutputState unpoppedChangeBatches_m) = shardNodeStates' HM.! nodeId node
-          modifyMVar_ unpoppedChangeBatches_m (\xs -> return $ changeBatch : xs)
+          modifyMVar_ unpoppedChangeBatches_m (\xs -> return $ xs ++ [changeBatch])
         TimestampPushSpec _ -> do
           let outputChangeBatch = L.foldl
                 (\acc change -> do
@@ -505,26 +505,9 @@ hasWork :: Shard a -> IO Bool
 hasWork shard@Shard{..} = do
   shardUnprocessedChangeBatches' <- readMVar shardUnprocessedChangeBatches
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
-  shardNodeStates' <- readMVar shardNodeStates
-  anyOutput <- findM (outputNodeNotEmpty shard) outputNodes >>= \case
-    Nothing -> return False
-    Just _  -> return True
   return $
     not (L.null shardUnprocessedChangeBatches')    ||
-    not (HM.null shardUnprocessedFrontierUpdates') ||
-    anyOutput
-  where
-    outputNodes = getOutputNodes shardGraph
-
-popOutput :: (Show a) => Shard a -> Node -> IO ()
-popOutput Shard{..} node = do
-  shardNodeStates' <- readMVar shardNodeStates
-  let (OutputState dcbs_m) = shardNodeStates' HM.! nodeId node
-  dcbs <- readMVar dcbs_m
-  mapM_ (\dcb -> do
-            print $ "---> Output DataChangeBatch: " <> show dcb
-        ) (L.reverse dcbs)
-  modifyMVar_ dcbs_m (\_ -> return [])
+    not (HM.null shardUnprocessedFrontierUpdates')
 
 doWork :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
 doWork shard@Shard{..} = do
@@ -536,15 +519,18 @@ doWork shard@Shard{..} = do
     processChangeBatch shard else
     if not (L.null shardUnprocessedFrontierUpdates') then do
       print $ "=== Working (processFrontierUpdates)..."
-      processFrontierUpdates shard else do
-      findM (outputNodeNotEmpty shard) outputNodes >>= \case
-        Nothing -> return ()
-        Just node -> do
-          print $ "=== Working (popOut)..."
-          popOutput shard node
-          print "=== Popout done."
-  where
-    outputNodes = getOutputNodes shardGraph
+      processFrontierUpdates shard else return ()
+
+popOutput :: (Show a) => Shard a -> Node -> IO ()
+popOutput Shard{..} node = do
+  shardNodeStates' <- readMVar shardNodeStates
+  let (OutputState dcbs_m) = shardNodeStates' HM.! nodeId node
+  dcbs <- readMVar dcbs_m
+  case dcbs of
+    []      -> threadDelay 1000000
+    (dcb:_) -> do
+      print $ "---> Output DataChangeBatch: " <> show dcb
+      modifyMVar_ dcbs_m (return . L.tail)
 
 run :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
 run shard = forever $ do

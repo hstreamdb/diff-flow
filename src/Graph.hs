@@ -105,7 +105,7 @@ data NodeState a
   = InputState (MVar (Frontier a)) (MVar (DataChangeBatch a))
   | IndexState (MVar (Index a)) (MVar [DataChange a])
   | JoinState (MVar (Frontier a)) (MVar (Frontier a))
-  | OutputState (MVar [DataChangeBatch a]) -- cons!
+  | OutputState (MVar [DataChangeBatch a])
   | DistinctState (MVar (Index a)) (MVar (HashMap Row (Set (Timestamp a))))
   | ReduceState (MVar (Index a)) (MVar (HashMap Row (Set (Timestamp a))))
   | NoState
