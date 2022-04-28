@@ -24,6 +24,7 @@ main = do
 
   shard <- buildShard graph
   forkIO $ run shard
+  forkIO . forever $ popOutput shard node_3
 
   pushInput shard node_1 (DataChange [String "aaa"] (Timestamp (0 :: Word32) []) 1)
   pushInput shard node_1 (DataChange [String "bbb"] (Timestamp (0 :: Word32) []) 1)
