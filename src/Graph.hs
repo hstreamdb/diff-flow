@@ -22,6 +22,7 @@ import           Data.Proxy
 import           Data.Vector             (Vector)
 import qualified Data.Vector             as V
 import           GHC.Generics            (Generic)
+import           Control.Concurrent.STM
 
 newtype Node = Node { nodeId :: Int } deriving (Eq, Show, Ord, Generic, Hashable)
 
@@ -102,12 +103,12 @@ getInpusFromSpec (ReduceSpec node _ _ _) = V.singleton node
 
 
 data NodeState a
-  = InputState (MVar (Frontier a)) (MVar (DataChangeBatch a))
-  | IndexState (MVar (Index a)) (MVar [DataChange a])
+  = InputState (TVar (Frontier a)) (TVar (DataChangeBatch a))
+  | IndexState (TVar (Index a)) (TVar [DataChange a])
   | JoinState (MVar (Frontier a)) (MVar (Frontier a))
-  | OutputState (MVar [DataChangeBatch a])
-  | DistinctState (MVar (Index a)) (MVar (HashMap Row (Set (Timestamp a))))
-  | ReduceState (MVar (Index a)) (MVar (HashMap Row (Set (Timestamp a))))
+  | OutputState (TVar [DataChangeBatch a])
+  | DistinctState (TVar (Index a)) (TVar (HashMap Row (Set (Timestamp a))))
+  | ReduceState (TVar (Index a)) (TVar (HashMap Row (Set (Timestamp a))))
   | NoState
 
 instance Show (NodeState a) where
@@ -119,7 +120,7 @@ instance Show (NodeState a) where
   show (ReduceState _ _)   = "ReduceState"
   show NoState             = "NodeState"
 
-getIndexFromState :: NodeState a -> MVar (Index a)
+getIndexFromState :: NodeState a -> TVar (Index a)
 getIndexFromState (IndexState    index_m _) = index_m
 getIndexFromState (DistinctState index_m _) = index_m
 getIndexFromState (ReduceState   index_m _) = index_m
@@ -127,27 +128,27 @@ getIndexFromState _ = error "Trying getting index from a node which does not con
 
 specToState :: (Show a, Ord a, Hashable a) => NodeSpec -> IO (NodeState a)
 specToState InputSpec = do
-  frontier <- newMVar Set.empty
-  unflushedChanges <- newMVar $ mkDataChangeBatch []
+  frontier <- newTVarIO Set.empty
+  unflushedChanges <- newTVarIO $ mkDataChangeBatch []
   return $ InputState frontier unflushedChanges
 specToState (IndexSpec _) = do
-  index <- newMVar $ Index []
-  pendingChanges <- newMVar []
+  index <- newTVarIO $ Index []
+  pendingChanges <- newTVarIO []
   return $ IndexState index pendingChanges
 specToState (JoinSpec _ _ _) = do
   frontier1 <- newMVar Set.empty
   frontier2 <- newMVar Set.empty
   return $ JoinState frontier1 frontier2
 specToState (OutputSpec _) = do
-  unpopedBatches <- newMVar []
+  unpopedBatches <- newTVarIO []
   return $ OutputState unpopedBatches
 specToState (DistinctSpec _) = do
-  index <- newMVar $ Index []
-  pendingCorrections <- newMVar HM.empty
+  index <- newTVarIO $ Index []
+  pendingCorrections <- newTVarIO HM.empty
   return $ DistinctState index pendingCorrections
 specToState (ReduceSpec _ _ _ _) = do
-  index <- newMVar $ Index []
-  pendingCorrections <- newMVar HM.empty
+  index <- newTVarIO $ Index []
+  pendingCorrections <- newTVarIO HM.empty
   return $ ReduceState index pendingCorrections
 specToState _ = return NoState
 

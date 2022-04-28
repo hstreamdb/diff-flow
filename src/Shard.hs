@@ -24,6 +24,8 @@ import GHC.Generics (Generic)
 import Control.Concurrent (threadDelay)
 import Data.Foldable.Extra (findM)
 import Data.Maybe (isNothing)
+import           Control.Concurrent.STM
+import qualified Data.Tuple as Tuple
 
 data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch a
@@ -104,7 +106,7 @@ buildShard graph@Graph{..} = do
                       let (InputState ft_m _) = shardNodeStates' HM.! i
                       let ts = leastTimestamp (L.length inputSubgraphs - 1)
                       applyFrontierChange shard (Node i) ts 1
-                      modifyMVar_ ft_m (return . Set.insert ts)
+                      atomically $ modifyTVar ft_m (Set.insert ts)
                     _         -> return ()
         ) (HM.toList graphNodeSpecs)
   return shard
@@ -119,12 +121,12 @@ pushInput Shard{..} Node{..} change = do
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
     Nothing -> error $ "No matching node found: " <> show nodeId
-    Just (InputState frontier_m unflushedChanges_m) -> do
-      frontier <- readMVar frontier_m
+    Just (InputState frontier_m unflushedChanges_m) -> atomically $ do
+      frontier <- readTVar frontier_m
       case frontier <.= (dcTimestamp change) of
         False -> error $ "Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
-        True  -> modifyMVar_ unflushedChanges_m
-                   (\batch -> return $ updateDataChangeBatch batch (\xs -> xs ++ [change]))
+        True  -> modifyTVar unflushedChanges_m
+                   (\batch -> updateDataChangeBatch batch (\xs -> xs ++ [change]))
     Just state -> error $ "Incorrect type of node state found: " <> show state
 
 --
@@ -136,8 +138,7 @@ flushInput shard@Shard{..} node@Node{..} = do
   case HM.lookup nodeId shardNodeStates' of
     Nothing -> error $ "No matching node found: " <> show nodeId
     Just (InputState frontier_m unflushedChanges_m) -> do
-      unflushedChangeBatch <- readMVar unflushedChanges_m
-      modifyMVar_ unflushedChanges_m (return . const emptyDataChangeBatch)
+      unflushedChangeBatch <- atomically $ swapTVar unflushedChanges_m emptyDataChangeBatch
       unless (L.null $ dcbChanges unflushedChangeBatch) $
         emitChangeBatch shard node unflushedChangeBatch
     Just state -> error $ "Incorrect type of node state found: " <> show state
@@ -151,10 +152,9 @@ advanceInput shard@Shard{..} node@Node{..} ts = do
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
     Nothing -> error $ "No matching node found: " <> show nodeId
-    Just (InputState frontier_m unflushedChanges_m) -> do
-      frontier <- readMVar frontier_m
-      let (newFrontier, ftChanges) = moveFrontier frontier MoveLater ts
-      modifyMVar_ frontier_m (\_ -> return newFrontier)
+    Just (InputState frontier_m _) -> do
+      ftChanges <- atomically $ do
+        stateTVar frontier_m (\ft -> Tuple.swap $ moveFrontier ft MoveLater ts)
       mapM_ (\change -> applyFrontierChange shard node (frontierChangeTs change) (frontierChangeDiff change)) ftChanges
     Just state -> error $ "Incorrect type of node state found: " <> show state
 
@@ -237,11 +237,12 @@ processChangeBatch shard@Shard{..} = do
                     applyFrontierChange shard node (dcTimestamp change) 1
                 ) (dcbChanges changeBatch)
           let (IndexState _ pendingChanges_m) = shardNodeStates' HM.! nodeId node
-          modifyMVar_ pendingChanges_m (\xs -> return $ xs ++ dcbChanges changeBatch)
+          atomically $
+            modifyTVar pendingChanges_m (\xs -> xs ++ dcbChanges changeBatch)
         JoinSpec _ _ _ -> undefined
         OutputSpec _ -> do
           let (OutputState unpoppedChangeBatches_m) = shardNodeStates' HM.! nodeId node
-          modifyMVar_ unpoppedChangeBatches_m (\xs -> return $ xs ++ [changeBatch])
+          atomically $ modifyTVar unpoppedChangeBatches_m (\xs -> xs ++ [changeBatch])
         TimestampPushSpec _ -> do
           let outputChangeBatch = L.foldl
                 (\acc change -> do
@@ -287,54 +288,58 @@ processChangeBatch shard@Shard{..} = do
         DistinctSpec _ -> do
           let (DistinctState index_m pendingCorrections_m) = shardNodeStates' HM.! nodeId node
           mapM_ (\change -> do
-                    pendingCorrections <- readMVar pendingCorrections_m
+                    pendingCorrections <- readTVarIO pendingCorrections_m
                     let key = dcRow change
                         corrExists = HM.lookup key pendingCorrections
                     let timestamps = case corrExists of
                                        Nothing  -> Set.empty
                                        Just tss -> tss
                     when (isNothing corrExists) $
-                      modifyMVar_ pendingCorrections_m (return . HM.insert key Set.empty)
+                      atomically $ modifyTVar pendingCorrections_m (HM.insert key Set.empty)
                     case Set.member (dcTimestamp change) timestamps of
                       True  -> return ()
                       False -> do
-                        modifyMVar_ pendingCorrections_m (return . HM.adjust (Set.insert (dcTimestamp change)) key)
+                        atomically $
+                          modifyTVar pendingCorrections_m (HM.adjust (Set.insert (dcTimestamp change)) key)
                         applyFrontierChange shard node (dcTimestamp change) 1
                         mapM_ (\entry -> do
-                                  curPendingCorrections <- readMVar pendingCorrections_m
+                                  curPendingCorrections <- readTVarIO pendingCorrections_m
                                   let lub = leastUpperBound (dcTimestamp change) entry
                                   let curTimestamps = (HM.!) curPendingCorrections key
                                   case Set.member lub curTimestamps of
                                     True  -> return ()
                                     False -> do
-                                      modifyMVar_ pendingCorrections_m (return . HM.adjust (Set.insert lub) key)
+                                      atomically $
+                                        modifyTVar pendingCorrections_m (HM.adjust (Set.insert lub) key)
                                       void $ applyFrontierChange shard node lub 1
                                   ) (Set.insert (dcTimestamp change) timestamps)
                 ) (dcbChanges changeBatch)
         ReduceSpec _ _ keygen _ -> do
           let (ReduceState _ pendingCorrections_m) = shardNodeStates' HM.! nodeId node
           mapM_ (\change -> do
-                    pendingCorrections <- readMVar pendingCorrections_m
+                    pendingCorrections <- readTVarIO pendingCorrections_m
                     let key = keygen (dcRow change)
                         corrExists = HM.lookup key pendingCorrections
                     let timestamps = case corrExists of
                                        Nothing  -> Set.empty
                                        Just tss -> tss
                     when (isNothing corrExists) $
-                      modifyMVar_ pendingCorrections_m (return . HM.insert key Set.empty)
+                      atomically $ modifyTVar pendingCorrections_m (HM.insert key Set.empty)
                     case Set.member (dcTimestamp change) timestamps of
                       True  -> return ()
                       False -> do
-                        modifyMVar_ pendingCorrections_m (return . HM.adjust (Set.insert (dcTimestamp change)) key)
+                        atomically $
+                          modifyTVar pendingCorrections_m (HM.adjust (Set.insert (dcTimestamp change)) key)
                         applyFrontierChange shard node (dcTimestamp change) 1
                         mapM_ (\entry -> do
-                                  curPendingCorrections <- readMVar pendingCorrections_m
+                                  curPendingCorrections <- readTVarIO pendingCorrections_m
                                   let lub = leastUpperBound (dcTimestamp change) entry
                                   let curTimestamps = (HM.!) curPendingCorrections key
                                   case Set.member lub curTimestamps of
                                     True  -> return ()
                                     False -> do
-                                      modifyMVar_ pendingCorrections_m (return . HM.adjust (Set.insert lub) key)
+                                      atomically $
+                                        modifyTVar pendingCorrections_m (HM.adjust (Set.insert lub) key)
                                       void $ applyFrontierChange shard node lub 1
                                   ) (Set.insert (dcTimestamp change) timestamps)
                 ) (dcbChanges changeBatch)
@@ -413,7 +418,7 @@ processFrontierUpdates shard@Shard{..} = do
       case nodeState of
         IndexState index_m pendingChanges_m      -> do
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
-          pendingChanges <- readMVar pendingChanges_m
+          pendingChanges <- readTVarIO pendingChanges_m
           let (IndexSpec inputNode) = nodeSpec
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
           newDataChangeBatch <-
@@ -421,12 +426,13 @@ processFrontierUpdates shard@Shard{..} = do
                       case tsfFrontier inputTsf `causalCompare` dcTimestamp change of
                         PGT -> do
                           applyFrontierChange shard node (dcTimestamp change) (-1)
-                          modifyMVar_ pendingChanges_m (return . L.delete change)
+                          atomically $
+                            modifyTVar pendingChanges_m (L.delete change)
                           return $ updateDataChangeBatch curDataChangeBatch (++ [change])
                         _   -> return curDataChangeBatch
                   ) emptyDataChangeBatch pendingChanges
-          modifyMVar_ index_m
-            (\oldIndex -> return $ addChangeBatchToIndex oldIndex newDataChangeBatch)
+          atomically $ modifyTVar index_m
+            (\oldIndex -> addChangeBatchToIndex oldIndex newDataChangeBatch)
           unless (L.null $ dcbChanges newDataChangeBatch) $
             emitChangeBatch shard node newDataChangeBatch
         DistinctState index_m pendingCorrections_m -> do
@@ -434,9 +440,8 @@ processFrontierUpdates shard@Shard{..} = do
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
           shardNodeStates' <- readMVar shardNodeStates
-          let inputIndex = getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
-          outputIndex <- readMVar index_m
-          pendingCorrections <- readMVar pendingCorrections_m
+          let inputIndex_m = getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
+          pendingCorrections <- readTVarIO pendingCorrections_m
           undefined
         ReduceState index_m pendingCorrections_m   -> do
           let inputNode = V.head $ getInpusFromSpec nodeSpec
@@ -444,11 +449,11 @@ processFrontierUpdates shard@Shard{..} = do
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
           shardNodeStates' <- readMVar shardNodeStates
           let inputIndex_m = getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
-          pendingCorrections <- readMVar pendingCorrections_m
+          pendingCorrections <- readTVarIO pendingCorrections_m
           mapM_ (goPendingCorrection nodeSpec (tsfFrontier inputTsf) inputIndex_m index_m) (HM.toList pendingCorrections)
         _ -> return ()
       where
-        goPendingCorrection :: NodeSpec -> Frontier a -> MVar (Index a) -> MVar (Index a) -> (Row, Set (Timestamp a)) -> IO ()
+        goPendingCorrection :: NodeSpec -> Frontier a -> TVar (Index a) -> TVar (Index a) -> (Row, Set (Timestamp a)) -> IO ()
         goPendingCorrection (ReduceSpec _ initValue keygen (Reducer reducer)) inputFt inputIndex_m outputIndex_m (row, timestamps) = do
           let key = keygen row
           (tssToCheck, ftChanges) <-
@@ -463,8 +468,8 @@ processFrontierUpdates shard@Shard{..} = do
                   ) ([],[]) timestamps
           let realTimestamps = L.foldl (flip Set.delete) timestamps tssToCheck
           mapM_ (\tsToCheck -> do
-                    inputIndex  <- readMVar inputIndex_m
-                    outputIndex <- readMVar outputIndex_m
+                    inputIndex  <- readTVarIO inputIndex_m
+                    outputIndex <- readTVarIO outputIndex_m
                     let inputChanges  = getChangesForKey inputIndex  (\row -> keygen row == key)
                         outputChanges = getChangesForKey outputIndex (\row -> keygen row == key)
                     let inputBag = L.foldl (\acc DataChange{..} ->
@@ -481,7 +486,8 @@ processFrontierUpdates shard@Shard{..} = do
                     let newOutput = DataChange (key ++ [inputValue]) tsToCheck 1
                         outputChanges'' = outputChanges' ++ [newOutput]
                     let changeBatch = mkDataChangeBatch outputChanges''
-                    modifyMVar_ outputIndex_m (return . flip addChangeBatchToIndex changeBatch)
+                    atomically $
+                      modifyTVar outputIndex_m (flip addChangeBatchToIndex changeBatch)
                     unless (L.null $ dcbChanges changeBatch) $
                       emitChangeBatch shard node changeBatch
                     mapM_ (\FrontierChange{..} -> applyFrontierChange shard node frontierChangeTs frontierChangeDiff) ftChanges
@@ -498,7 +504,7 @@ outputNodeNotEmpty :: Shard a -> Node -> IO Bool
 outputNodeNotEmpty Shard{..} node = do
   shardNodeStates' <- readMVar shardNodeStates
   let (OutputState dcbs_m) = shardNodeStates' HM.! (nodeId node)
-  dcbs <- readMVar dcbs_m
+  dcbs <- readTVarIO dcbs_m
   return . not $ L.null dcbs
 
 hasWork :: Shard a -> IO Bool
@@ -525,12 +531,14 @@ popOutput :: (Show a) => Shard a -> Node -> IO ()
 popOutput Shard{..} node = do
   shardNodeStates' <- readMVar shardNodeStates
   let (OutputState dcbs_m) = shardNodeStates' HM.! nodeId node
-  dcbs <- readMVar dcbs_m
-  case dcbs of
-    []      -> threadDelay 1000000
-    (dcb:_) -> do
-      print $ "---> Output DataChangeBatch: " <> show dcb
-      modifyMVar_ dcbs_m (return . L.tail)
+
+  dcb' <- atomically $
+    stateTVar dcbs_m (\xs -> case xs of
+                               []      -> (Nothing, xs)
+                               (x:xs') -> (Just x, xs'))
+  case dcb' of
+    Nothing  -> threadDelay 1000000
+    Just dcb -> print $ "---> Output DataChangeBatch: " <> show dcb
 
 run :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
 run shard = forever $ do

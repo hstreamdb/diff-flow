@@ -27,6 +27,7 @@ library
     , extra
     , hashable
     , multiset
+    , stm
     , text
     , unordered-containers
     , vector
