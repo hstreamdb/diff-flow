@@ -201,8 +201,6 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
 processChangeBatch :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
 processChangeBatch shard@Shard{..} = do
   shardUnprocessedChangeBatches' <- readMVar shardUnprocessedChangeBatches
-  shardNodeFrontiers' <- readMVar shardNodeFrontiers
-  shardNodeStates'    <- readMVar shardNodeStates
   case shardUnprocessedChangeBatches' of
     []      -> return ()
     (cbi:_) -> do
@@ -215,6 +213,7 @@ processChangeBatch shard@Shard{..} = do
       -- Also line 150
       -- Remove both of them seems still OK...
       mapM_ (\ts -> queueFrontierChange shard nodeInput ts (-1)) (dcbLowerBound changeBatch)
+      shardNodeStates'    <- readMVar shardNodeStates
       case graphNodeSpecs shardGraph HM.! nodeId node of
         InputSpec -> error $ "Input node will never have work to do on its input"
         MapSpec _ (Mapper mapper) -> do
@@ -231,8 +230,9 @@ processChangeBatch shard@Shard{..} = do
           unless (L.null $ dcbChanges outputChangeBatch) $
             emitChangeBatch shard node outputChangeBatch
         IndexSpec _ -> do
-          let nodeFrontier = tsfFrontier $ shardNodeFrontiers' HM.! nodeId node
           mapM_ (\change -> do
+                    shardNodeFrontiers' <- readMVar shardNodeFrontiers
+                    let nodeFrontier = tsfFrontier $ shardNodeFrontiers' HM.! nodeId node
                     assert (nodeFrontier <.= dcTimestamp change) (return ())
                     applyFrontierChange shard node (dcTimestamp change) 1
                 ) (dcbChanges changeBatch)
