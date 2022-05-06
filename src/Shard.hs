@@ -23,7 +23,7 @@ import qualified Data.Vector             as V
 import GHC.Generics (Generic)
 import Control.Concurrent (threadDelay)
 import Data.Foldable.Extra (findM)
-import Data.Maybe (isNothing)
+import Data.Maybe (isNothing, fromJust)
 import           Control.Concurrent.STM
 import qualified Data.Tuple as Tuple
 
@@ -253,8 +253,9 @@ processChangeBatch shard@Shard{..} = do
                       _ -> error "impossible!"
           let outputChangeBatch =
                 mergeJoinIndex otherIndex joinFt changeBatch keygen joiner
-          emitChangeBatch shard node outputChangeBatch
-          let inputFt = dcbLowerBound changeBatch
+          unless (L.null $ dcbChanges outputChangeBatch) $
+            emitChangeBatch shard node outputChangeBatch
+          let inputFt = fromJust $ cbiInputFrontier cbi -- FIXME: unsafe
           case inputIx of
             0 -> atomically $ writeTVar ft1_m inputFt
             1 -> atomically $ writeTVar ft2_m inputFt
