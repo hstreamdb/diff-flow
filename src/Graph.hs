@@ -32,6 +32,7 @@ data NodeInput = NodeInput
   } deriving (Eq, Show, Ord, Generic, Hashable)
 
 newtype Mapper = Mapper { mapper :: Row -> Row }
+newtype Joiner = Joiner { joiner :: Row -> Row -> Row }
 newtype Reducer = Reducer { reducer :: Value -> Row -> Value }
 type KeyGenerator = Row -> Row
 
@@ -53,7 +54,7 @@ data NodeSpec
   = InputSpec
   | MapSpec           Node Mapper               -- input, mapper
   | IndexSpec         Node                      -- input
-  | JoinSpec          Node Node Word64          -- input1, input2, key_columns
+  | JoinSpec          Node Node KeyGenerator Joiner -- input1, input2, keygen, joiner
   | OutputSpec        Node                      -- input
   | TimestampPushSpec Node                      -- input
   | TimestampIncSpec  (Maybe Node)              -- input
@@ -66,7 +67,7 @@ instance Show NodeSpec where
   show InputSpec = "InputSpec"
   show (MapSpec _ _) = "MapSpec"
   show (IndexSpec _) = "IndexSpec"
-  show (JoinSpec _ _ _) = "JoinSpec"
+  show (JoinSpec _ _ _ _) = "JoinSpec"
   show (OutputSpec _) = "OutputSpec"
   show (TimestampPushSpec _) = "TimestampPushSpec"
   show (TimestampIncSpec _) = "TimestampIncSpec"
@@ -90,7 +91,7 @@ getInpusFromSpec :: NodeSpec -> Vector Node
 getInpusFromSpec InputSpec = V.empty
 getInpusFromSpec (MapSpec node _) = V.singleton node
 getInpusFromSpec (IndexSpec node) = V.singleton node
-getInpusFromSpec (JoinSpec node1 node2 _) = V.fromList [node1, node2]
+getInpusFromSpec (JoinSpec node1 node2 _ _) = V.fromList [node1, node2]
 getInpusFromSpec (OutputSpec node) = V.singleton node
 getInpusFromSpec (TimestampPushSpec node) = V.singleton node
 getInpusFromSpec (TimestampIncSpec m_node) = case m_node of
@@ -105,7 +106,7 @@ getInpusFromSpec (ReduceSpec node _ _ _) = V.singleton node
 data NodeState a
   = InputState (TVar (Frontier a)) (TVar (DataChangeBatch a))
   | IndexState (TVar (Index a)) (TVar [DataChange a])
-  | JoinState (MVar (Frontier a)) (MVar (Frontier a))
+  | JoinState (TVar (Frontier a)) (TVar (Frontier a))
   | OutputState (TVar [DataChangeBatch a])
   | DistinctState (TVar (Index a)) (TVar (HashMap Row (Set (Timestamp a))))
   | ReduceState (TVar (Index a)) (TVar (HashMap Row (Set (Timestamp a))))
@@ -135,9 +136,9 @@ specToState (IndexSpec _) = do
   index <- newTVarIO $ Index []
   pendingChanges <- newTVarIO []
   return $ IndexState index pendingChanges
-specToState (JoinSpec _ _ _) = do
-  frontier1 <- newMVar Set.empty
-  frontier2 <- newMVar Set.empty
+specToState (JoinSpec _ _ _ _) = do
+  frontier1 <- newTVarIO Set.empty
+  frontier2 <- newTVarIO Set.empty
   return $ JoinState frontier1 frontier2
 specToState (OutputSpec _) = do
   unpopedBatches <- newTVarIO []

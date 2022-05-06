@@ -286,6 +286,29 @@ updateDataChangeBatch :: (Hashable a, Ord a, Show a)
 updateDataChangeBatch oldBatch f =
   mkDataChangeBatch $ f (dcbChanges oldBatch)
 
+mergeJoinDataChangeBatch :: (Hashable a, Ord a, Show a)
+                         => DataChangeBatch a
+                         -> Frontier a
+                         -> DataChangeBatch a
+                         -> (Row -> Row)
+                         -> (Row -> Row -> Row)
+                         -> DataChangeBatch a
+mergeJoinDataChangeBatch self selfFt other keygen rowgen =
+  L.foldl (\acc (this,that) ->
+             let thisKey = keygen (dcRow this)
+                 thatKey = keygen (dcRow that)
+              in if thisKey == thatKey && selfFt `causalCompare` dcTimestamp this == PGT then
+               let newDataChange =
+                     DataChange
+                     { dcRow = rowgen (dcRow this) (dcRow that)
+                     , dcTimestamp = leastUpperBound (dcTimestamp this) (dcTimestamp that)
+                     , dcDiff = dcDiff this * dcDiff that
+                     }
+                in updateDataChangeBatch acc (\xs -> xs ++ [newDataChange])
+             else acc
+          ) emptyDataChangeBatch
+  [(self_x, other_x) | self_x <- dcbChanges self, other_x <- dcbChanges other]
+
 ----
 
 newtype Index a = Index
@@ -322,3 +345,17 @@ getChangesForKey (Index batches) p =
                           if p dcRow then change:acc else acc) [] (dcbChanges batch)
             in resultOfThisBatch ++ acc
           ) [] batches
+
+mergeJoinIndex :: (Hashable a, Ord a, Show a)
+               => Index a
+               -> Frontier a
+               -> DataChangeBatch a
+               -> (Row -> Row)
+               -> (Row -> Row -> Row)
+               -> DataChangeBatch a
+mergeJoinIndex self selfFt otherChangeBatch keygen rowgen =
+  L.foldl (\acc selfChangeBatch ->
+             let newChangeBatch =
+                   mergeJoinDataChangeBatch selfChangeBatch selfFt otherChangeBatch keygen rowgen
+              in updateDataChangeBatch acc (\xs -> xs ++ dcbChanges newChangeBatch)
+          ) emptyDataChangeBatch (indexChangeBatches self)

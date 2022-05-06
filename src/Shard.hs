@@ -239,7 +239,26 @@ processChangeBatch shard@Shard{..} = do
           let (IndexState _ pendingChanges_m) = shardNodeStates' HM.! nodeId node
           atomically $
             modifyTVar pendingChanges_m (\xs -> xs ++ dcbChanges changeBatch)
-        JoinSpec _ _ _ -> undefined
+        JoinSpec node1 node2 keygen (Joiner joiner) -> do
+          let inputIx = nodeInputIndex nodeInput
+              otherNode = case inputIx of
+                            0 -> node2
+                            1 -> node1
+                            _ -> error "impossible!"
+          otherIndex <- readTVarIO $ getIndexFromState (shardNodeStates' HM.! nodeId otherNode)
+          let (JoinState ft1_m ft2_m) = shardNodeStates' HM.! nodeId node
+          joinFt <- case inputIx of
+                      0 -> readTVarIO ft2_m
+                      1 -> readTVarIO ft1_m
+                      _ -> error "impossible!"
+          let outputChangeBatch =
+                mergeJoinIndex otherIndex joinFt changeBatch keygen joiner
+          emitChangeBatch shard node outputChangeBatch
+          let inputFt = dcbLowerBound changeBatch
+          case inputIx of
+            0 -> atomically $ writeTVar ft1_m inputFt
+            1 -> atomically $ writeTVar ft2_m inputFt
+            _ -> error "impossible!"
         OutputSpec _ -> do
           let (OutputState unpoppedChangeBatches_m) = shardNodeStates' HM.! nodeId node
           atomically $ modifyTVar unpoppedChangeBatches_m (\xs -> xs ++ [changeBatch])
