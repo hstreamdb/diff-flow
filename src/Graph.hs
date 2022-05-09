@@ -56,7 +56,7 @@ data NodeSpec
   | MapSpec           Node Mapper               -- input, mapper
   | FilterSpec        Node Filter               -- input, filter
   | IndexSpec         Node                      -- input
-  | JoinSpec          Node Node KeyGenerator Joiner -- input1, input2, keygen, joiner
+  | JoinSpec          Node Node KeyGenerator KeyGenerator Joiner -- input1, input2, keygen1, keygen2, joiner
   | OutputSpec        Node                      -- input
   | TimestampPushSpec Node                      -- input
   | TimestampIncSpec  (Maybe Node)              -- input
@@ -70,7 +70,7 @@ instance Show NodeSpec where
   show (MapSpec _ _) = "MapSpec"
   show (FilterSpec _ _) = "FilterSpec"
   show (IndexSpec _) = "IndexSpec"
-  show (JoinSpec _ _ _ _) = "JoinSpec"
+  show (JoinSpec _ _ _ _ _) = "JoinSpec"
   show (OutputSpec _) = "OutputSpec"
   show (TimestampPushSpec _) = "TimestampPushSpec"
   show (TimestampIncSpec _) = "TimestampIncSpec"
@@ -95,7 +95,7 @@ getInputsFromSpec InputSpec = V.empty
 getInputsFromSpec (MapSpec node _) = V.singleton node
 getInputsFromSpec (FilterSpec node _) = V.singleton node
 getInputsFromSpec (IndexSpec node) = V.singleton node
-getInputsFromSpec (JoinSpec node1 node2 _ _) = V.fromList [node1, node2]
+getInputsFromSpec (JoinSpec node1 node2 _ _ _) = V.fromList [node1, node2]
 getInputsFromSpec (OutputSpec node) = V.singleton node
 getInputsFromSpec (TimestampPushSpec node) = V.singleton node
 getInputsFromSpec (TimestampIncSpec m_node) = case m_node of
@@ -140,7 +140,7 @@ specToState (IndexSpec _) = do
   index <- newTVarIO $ Index []
   pendingChanges <- newTVarIO []
   return $ IndexState index pendingChanges
-specToState (JoinSpec _ _ _ _) = do
+specToState (JoinSpec _ _ _ _ _) = do
   frontier1 <- newTVarIO Set.empty
   frontier2 <- newTVarIO Set.empty
   return $ JoinState frontier1 frontier2

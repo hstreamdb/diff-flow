@@ -22,9 +22,10 @@ main = do
       (builder_5, node_2') = addNode builder_4 subgraph_0 (IndexSpec node_2)
 
 
-  let keygen = \[k1,v1,k2,v2] -> [k2,v2]
+  let keygen1 = \[k1,v1,k2,v2] -> [k2,v2]
+      keygen2 = \[k1,v1,k2,v2] -> [k1,v1]
       rowgen = \[k1,v1,k2,v2] [k1',v1',k2',v2'] -> [k1,v1,k2,v2, k1',v1',k2',v2']
-  let (builder_6, node_3) = addNode builder_5 subgraph_0 (JoinSpec node_1' node_2' keygen (Joiner rowgen))
+  let (builder_6, node_3) = addNode builder_5 subgraph_0 (JoinSpec node_1' node_2' keygen1 keygen2 (Joiner rowgen))
 
   let (builder_7, node_4) = addNode builder_6 subgraph_0 (OutputSpec node_3)
 
@@ -37,7 +38,7 @@ main = do
   pushInput shard node_1
     (DataChange [String "a", Number 1, String "b", Number 2] (Timestamp (0 :: Word32) []) 1)
   pushInput shard node_2
-    (DataChange [String "c", Number 3, String "b", Number 2] (Timestamp (0 :: Word32) []) 1)
+    (DataChange [String "b", Number 2, String "c", Number 3] (Timestamp (0 :: Word32) []) 1)
 
   flushInput shard node_1
   flushInput shard node_2

@@ -291,12 +291,13 @@ mergeJoinDataChangeBatch :: (Hashable a, Ord a, Show a)
                          -> Frontier a
                          -> DataChangeBatch a
                          -> (Row -> Row)
+                         -> (Row -> Row)
                          -> (Row -> Row -> Row)
                          -> DataChangeBatch a
-mergeJoinDataChangeBatch self selfFt other keygen rowgen =
+mergeJoinDataChangeBatch self selfFt other keygen1 keygen2 rowgen =
   L.foldl (\acc (this,that) ->
-             let thisKey = keygen (dcRow this)
-                 thatKey = keygen (dcRow that)
+             let thisKey = keygen1 (dcRow this)
+                 thatKey = keygen2 (dcRow that)
               in if thisKey == thatKey && selfFt `causalCompare` dcTimestamp this == PGT then
                let newDataChange =
                      DataChange
@@ -351,11 +352,12 @@ mergeJoinIndex :: (Hashable a, Ord a, Show a)
                -> Frontier a
                -> DataChangeBatch a
                -> (Row -> Row)
+               -> (Row -> Row)
                -> (Row -> Row -> Row)
                -> DataChangeBatch a
-mergeJoinIndex self selfFt otherChangeBatch keygen rowgen =
+mergeJoinIndex self selfFt otherChangeBatch keygen1 keygen2 rowgen =
   L.foldl (\acc selfChangeBatch ->
              let newChangeBatch =
-                   mergeJoinDataChangeBatch selfChangeBatch selfFt otherChangeBatch keygen rowgen
+                   mergeJoinDataChangeBatch selfChangeBatch selfFt otherChangeBatch keygen1 keygen2 rowgen
               in updateDataChangeBatch acc (\xs -> xs ++ dcbChanges newChangeBatch)
           ) emptyDataChangeBatch (indexChangeBatches self)

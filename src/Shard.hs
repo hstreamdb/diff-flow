@@ -247,7 +247,7 @@ processChangeBatch shard@Shard{..} = do
           let (IndexState _ pendingChanges_m) = shardNodeStates' HM.! nodeId node
           atomically $
             modifyTVar pendingChanges_m (\xs -> xs ++ dcbChanges changeBatch)
-        JoinSpec node1 node2 keygen (Joiner joiner) -> do
+        JoinSpec node1 node2 keygen1 keygen2 (Joiner joiner) -> do
           let inputIx = nodeInputIndex nodeInput
               otherNode = case inputIx of
                             0 -> node2
@@ -260,7 +260,7 @@ processChangeBatch shard@Shard{..} = do
                       1 -> readTVarIO ft1_m
                       _ -> error "impossible!"
           let outputChangeBatch =
-                mergeJoinIndex otherIndex joinFt changeBatch keygen joiner
+                mergeJoinIndex otherIndex joinFt changeBatch keygen1 keygen2 joiner
           unless (L.null $ dcbChanges outputChangeBatch) $
             emitChangeBatch shard node outputChangeBatch
           let inputFt = fromJust $ cbiInputFrontier cbi -- FIXME: unsafe
