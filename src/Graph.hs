@@ -34,7 +34,7 @@ data NodeInput = NodeInput
 newtype Mapper = Mapper { mapper :: Row -> Row }
 newtype Filter = Filter { filter :: Row -> Bool }
 newtype Joiner = Joiner { joiner :: Row -> Row -> Row }
-newtype Reducer = Reducer { reducer :: Value -> Row -> Value }
+newtype Reducer = Reducer { reducer :: Row -> Row -> Row }
 type KeyGenerator = Row -> Row
 
 {-
@@ -63,7 +63,7 @@ data NodeSpec
   | TimestampPopSpec  Node                      -- input
   | UnionSpec         Node Node                 -- input1, input2
   | DistinctSpec      Node                      -- input
-  | ReduceSpec        Node Value KeyGenerator Reducer -- input, init, kengen, reducer
+  | ReduceSpec        Node Row KeyGenerator Reducer -- input, init, kengen, reducer
 
 instance Show NodeSpec where
   show InputSpec = "InputSpec"
