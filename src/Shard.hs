@@ -165,7 +165,7 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
     Nothing   -> error $ "No matching node found: " <> show (nodeId node)
     Just spec -> do
       case outputIndex spec of
-        True -> unless (V.length (getInpusFromSpec spec) == 1) $ do
+        True -> unless (V.length (getInputsFromSpec spec) == 1) $ do
           error "Nodes that output indexes can only have 1 input"
         False -> return ()
 
@@ -178,7 +178,7 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
 
       -- emit to downstream
       let inputFt = if outputIndex spec then
-            let inputNodeId = (nodeId . V.head) (getInpusFromSpec spec)
+            let inputNodeId = (nodeId . V.head) (getInputsFromSpec spec)
              in Just . tsfFrontier $ shardNodeFrontiers' HM.! inputNodeId
             else Nothing
           toNodeInputs = graphDownstreamNodes shardGraph HM.! nodeId node
@@ -226,6 +226,14 @@ processChangeBatch shard@Shard{..} = do
                           , dcDiff = dcDiff change
                           }
                     updateDataChangeBatch acc (\xs -> xs ++ [newChange])
+                ) emptyDataChangeBatch (dcbChanges changeBatch)
+          unless (L.null $ dcbChanges outputChangeBatch) $
+            emitChangeBatch shard node outputChangeBatch
+        FilterSpec _ (Filter filter') -> do
+          let outputChangeBatch = L.foldl
+                (\acc change ->
+                   if filter' (dcRow change) then
+                     updateDataChangeBatch acc (\xs -> xs ++ [change]) else acc
                 ) emptyDataChangeBatch (dcbChanges changeBatch)
           unless (L.null $ dcbChanges outputChangeBatch) $
             emitChangeBatch shard node outputChangeBatch
@@ -369,7 +377,7 @@ queueFrontierChange Shard{..} nodeInput@NodeInput{..} ts diff = do
   assert (diff /= 0) (return ())
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
   let nodeSpec = graphNodeSpecs shardGraph HM.! nodeId nodeInputNode
-      inputNode = (V.!) (getInpusFromSpec nodeSpec) nodeInputIndex
+      inputNode = (V.!) (getInputsFromSpec nodeSpec) nodeInputIndex
   let thisSubgraphs = graphNodeSubgraphs shardGraph HM.! nodeId nodeInputNode
       pointstamp = Pointstamp
         { pointstampNodeInput = nodeInput
@@ -456,7 +464,7 @@ processFrontierUpdates shard@Shard{..} = do
           unless (L.null $ dcbChanges newDataChangeBatch) $
             emitChangeBatch shard node newDataChangeBatch
         DistinctState index_m pendingCorrections_m -> do
-          let inputNode = V.head $ getInpusFromSpec nodeSpec
+          let inputNode = V.head $ getInputsFromSpec nodeSpec
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
           shardNodeStates' <- readMVar shardNodeStates
@@ -464,7 +472,7 @@ processFrontierUpdates shard@Shard{..} = do
           pendingCorrections <- readTVarIO pendingCorrections_m
           undefined
         ReduceState index_m pendingCorrections_m   -> do
-          let inputNode = V.head $ getInpusFromSpec nodeSpec
+          let inputNode = V.head $ getInputsFromSpec nodeSpec
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
           let inputTsf = shardNodeFrontiers' HM.! nodeId inputNode
           shardNodeStates' <- readMVar shardNodeStates

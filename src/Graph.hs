@@ -32,6 +32,7 @@ data NodeInput = NodeInput
   } deriving (Eq, Show, Ord, Generic, Hashable)
 
 newtype Mapper = Mapper { mapper :: Row -> Row }
+newtype Filter = Filter { filter :: Row -> Bool }
 newtype Joiner = Joiner { joiner :: Row -> Row -> Row }
 newtype Reducer = Reducer { reducer :: Value -> Row -> Value }
 type KeyGenerator = Row -> Row
@@ -53,6 +54,7 @@ data NodeSpec a where
 data NodeSpec
   = InputSpec
   | MapSpec           Node Mapper               -- input, mapper
+  | FilterSpec        Node Filter               -- input, filter
   | IndexSpec         Node                      -- input
   | JoinSpec          Node Node KeyGenerator Joiner -- input1, input2, keygen, joiner
   | OutputSpec        Node                      -- input
@@ -66,6 +68,7 @@ data NodeSpec
 instance Show NodeSpec where
   show InputSpec = "InputSpec"
   show (MapSpec _ _) = "MapSpec"
+  show (FilterSpec _ _) = "FilterSpec"
   show (IndexSpec _) = "IndexSpec"
   show (JoinSpec _ _ _ _) = "JoinSpec"
   show (OutputSpec _) = "OutputSpec"
@@ -87,20 +90,21 @@ needIndex (DistinctSpec _)     = True
 needIndex (ReduceSpec _ _ _ _) = True
 needIndex _                    = False
 
-getInpusFromSpec :: NodeSpec -> Vector Node
-getInpusFromSpec InputSpec = V.empty
-getInpusFromSpec (MapSpec node _) = V.singleton node
-getInpusFromSpec (IndexSpec node) = V.singleton node
-getInpusFromSpec (JoinSpec node1 node2 _ _) = V.fromList [node1, node2]
-getInpusFromSpec (OutputSpec node) = V.singleton node
-getInpusFromSpec (TimestampPushSpec node) = V.singleton node
-getInpusFromSpec (TimestampIncSpec m_node) = case m_node of
+getInputsFromSpec :: NodeSpec -> Vector Node
+getInputsFromSpec InputSpec = V.empty
+getInputsFromSpec (MapSpec node _) = V.singleton node
+getInputsFromSpec (FilterSpec node _) = V.singleton node
+getInputsFromSpec (IndexSpec node) = V.singleton node
+getInputsFromSpec (JoinSpec node1 node2 _ _) = V.fromList [node1, node2]
+getInputsFromSpec (OutputSpec node) = V.singleton node
+getInputsFromSpec (TimestampPushSpec node) = V.singleton node
+getInputsFromSpec (TimestampIncSpec m_node) = case m_node of
                                                Nothing   -> V.empty
                                                Just node -> V.singleton node
-getInpusFromSpec (TimestampPopSpec node) = V.singleton node
-getInpusFromSpec (UnionSpec node1 node2) = V.fromList [node1, node2]
-getInpusFromSpec (DistinctSpec node) = V.singleton node
-getInpusFromSpec (ReduceSpec node _ _ _) = V.singleton node
+getInputsFromSpec (TimestampPopSpec node) = V.singleton node
+getInputsFromSpec (UnionSpec node1 node2) = V.fromList [node1, node2]
+getInputsFromSpec (DistinctSpec node) = V.singleton node
+getInputsFromSpec (ReduceSpec node _ _ _) = V.singleton node
 
 
 data NodeState a
@@ -230,7 +234,7 @@ buildGraph GraphBuilder{..} =
                                  V.ifoldl (\acc' i' x' ->
                                              let nodeInput = NodeInput (Node i) i'
                                               in HM.adjust (nodeInput :) (nodeId x') acc'
-                                          ) acc (getInpusFromSpec x)
+                                          ) acc (getInputsFromSpec x)
                                )
                       (V.ifoldl (\acc i x -> HM.insert i [] acc) HM.empty  graphBuilderNodeSpecs)
                       graphBuilderNodeSpecs
