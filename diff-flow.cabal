@@ -21,7 +21,7 @@ library
     Types
 
   build-depends:
-    , aeson
+    , aeson                 <2
     , base                  >=4.11 && <5
     , containers
     , extra
@@ -41,7 +41,7 @@ test-suite lib-test
   other-modules:      DiffFlow.TypesSpec
   hs-source-dirs:     test
   build-depends:
-    , aeson
+    , aeson                 <2
     , base                  >=4.11 && <5
     , containers
     , diff-flow
@@ -59,7 +59,7 @@ test-suite lib-test
 executable example
   main-is:          example/Main.hs
   build-depends:
-    , aeson
+    , aeson                 <2
     , base                  >=4.11 && <5
     , containers
     , diff-flow

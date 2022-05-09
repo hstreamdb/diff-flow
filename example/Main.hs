@@ -22,9 +22,11 @@ main = do
       (builder_5, node_2') = addNode builder_4 subgraph_0 (IndexSpec node_2)
 
 
-  let keygen1 = \[k1,v1,k2,v2] -> [k2,v2]
-      keygen2 = \[k1,v1,k2,v2] -> [k1,v1]
-      rowgen = \[k1,v1,k2,v2] [k1',v1',k2',v2'] -> [k1,v1,k2,v2, k1',v1',k2',v2']
+  let keygen1 o = let [(k1,v1), (k2,v2)] = HM.toList o in HM.fromList [(k2,v2)]
+      keygen2 o = let [(k1,v1), (k2,v2)] = HM.toList o in HM.fromList [(k1,v1)]
+      rowgen o1 o2 = let [(k1,v1), (k2,v2)] = HM.toList o1
+                         [(k1',v1'), (k2',v2')] = HM.toList o2
+                      in HM.fromList [(k1,v1), (k2,v2), (k1',v1'), (k2',v2')]
   let (builder_6, node_3) = addNode builder_5 subgraph_0 (JoinSpec node_1' node_2' keygen1 keygen2 (Joiner rowgen))
 
   let (builder_7, node_4) = addNode builder_6 subgraph_0 (OutputSpec node_3)
@@ -36,9 +38,9 @@ main = do
   forkIO . forever $ popOutput shard node_4
 
   pushInput shard node_1
-    (DataChange [String "a", Number 1, String "b", Number 2] (Timestamp (0 :: Word32) []) 1)
+    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (0 :: Word32) []) 1)
   pushInput shard node_2
-    (DataChange [String "b", Number 2, String "c", Number 3] (Timestamp (0 :: Word32) []) 1)
+    (DataChange (HM.fromList [("b", Number 2), ("c", Number 3)]) (Timestamp (0 :: Word32) []) 1)
 
   flushInput shard node_1
   flushInput shard node_2

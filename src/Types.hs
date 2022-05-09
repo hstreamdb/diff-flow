@@ -23,7 +23,7 @@ import           Data.Set          (Set)
 import qualified Data.Set          as Set
 import           GHC.Generics      (Generic)
 
-type Row = [Value]
+type Row = Aeson.Object
 type Bag = MultiSet Row
 
 data PartialOrdering = PLT | PEQ | PGT | PNONE deriving (Eq, Show)
