@@ -32,7 +32,7 @@ data NodeInput = NodeInput
   } deriving (Eq, Show, Ord, Generic, Hashable)
 
 newtype Mapper = Mapper { mapper :: Row -> Row }
-newtype Filter = Filter { filter :: Row -> Bool }
+newtype Filter = Filter { filterF :: Row -> Bool }
 newtype Joiner = Joiner { joiner :: Row -> Row -> Row }
 newtype Reducer = Reducer { reducer :: Row -> Row -> Row }
 type KeyGenerator = Row -> Row

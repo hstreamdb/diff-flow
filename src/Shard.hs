@@ -555,8 +555,8 @@ doWork shard@Shard{..} = do
       print $ "=== Working (processFrontierUpdates)..."
       processFrontierUpdates shard else return ()
 
-popOutput :: (Show a) => Shard a -> Node -> IO ()
-popOutput Shard{..} node = do
+popOutput :: (Show a) => Shard a -> Node -> (DataChangeBatch a -> IO ()) -> IO ()
+popOutput Shard{..} node action = do
   shardNodeStates' <- readMVar shardNodeStates
   let (OutputState dcbs_m) = shardNodeStates' HM.! nodeId node
 
@@ -566,7 +566,7 @@ popOutput Shard{..} node = do
                                (x:xs') -> (Just x, xs'))
   case dcb' of
     Nothing  -> threadDelay 1000000
-    Just dcb -> print $ "---> Output DataChangeBatch: " <> show dcb
+    Just dcb -> action dcb
 
 run :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
 run shard = forever $ do
