@@ -510,7 +510,7 @@ processFrontierUpdates shard@Shard{..} = do
                     let outputChanges' =
                           L.map (\change -> change {dcDiff = - (dcDiff change)})
                             (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
-                    let newOutput = DataChange inputValue tsToCheck 1
+                    let newOutput = DataChange (key <> inputValue) tsToCheck 1
                         outputChanges'' = outputChanges' ++ [newOutput]
                     let changeBatch = mkDataChangeBatch outputChanges''
                     atomically $
