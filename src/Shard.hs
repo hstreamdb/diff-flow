@@ -482,8 +482,7 @@ processFrontierUpdates shard@Shard{..} = do
         _ -> return ()
       where
         goPendingCorrection :: NodeSpec -> Frontier a -> TVar (Index a) -> TVar (Index a) -> (Row, Set (Timestamp a)) -> IO ()
-        goPendingCorrection (ReduceSpec _ initValue keygen (Reducer reducer)) inputFt inputIndex_m outputIndex_m (row, timestamps) = do
-          let key = keygen row
+        goPendingCorrection (ReduceSpec _ initValue keygen (Reducer reducer)) inputFt inputIndex_m outputIndex_m (key, timestamps) = do
           (tssToCheck, ftChanges) <-
             foldM (\(curTssToCheck,curFtChanges) ts -> do
                       if inputFt `causalCompare` ts == PGT then do
