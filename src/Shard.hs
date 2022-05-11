@@ -506,7 +506,11 @@ processFrontierUpdates shard@Shard{..} = do
                                                 dcTimestamp change <.= tsToCheck)
                                      inputChanges)
                     let sortedInputs = L.sort $ MultiSet.toOccurList inputBag
-                    let inputValue = L.foldl (\acc (x,_) -> reducer acc x) initValue sortedInputs
+                    let inputValue = L.foldl
+                          (\acc (x,n) ->
+                             -- do 'reducer' for 'n' times
+                             L.foldl (\acc' _ -> reducer acc' x) acc [1..n]
+                          ) initValue sortedInputs
                     let outputChanges' =
                           L.map (\change -> change {dcDiff = - (dcDiff change)})
                             (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
