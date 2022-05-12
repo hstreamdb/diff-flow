@@ -19,6 +19,7 @@ library
     Graph
     Shard
     Types
+    Weird
 
   build-depends:
     , aeson                 <2
