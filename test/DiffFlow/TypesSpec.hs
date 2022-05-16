@@ -9,6 +9,7 @@ import           Data.MultiSet (MultiSet)
 import qualified Data.MultiSet as MultiSet
 import           Data.Set      (Set)
 import qualified Data.Set      as Set
+import qualified Data.HashMap.Strict as HM
 import           Test.Hspec
 import           Types
 
@@ -197,64 +198,64 @@ dataChangeBatch :: Spec
 dataChangeBatch = describe "DataChangeBatch" $ do
   it "make DataChangeBatch" $ do
     mkDataChangeBatchChecker
-      [ DataChange [String "a"] (Timestamp (0 :: Int) []) 0
-      , DataChange [String "a"] (Timestamp  0         []) 0
-      , DataChange [String "a"] (Timestamp  0         []) 1
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 0
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 0
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1
       ]
-      [ DataChange [String "a"] (Timestamp  0         []) 1]
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1]
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange [String "a"] (Timestamp (0 :: Int) []) 0
-      , DataChange [String "a"] (Timestamp  0         []) 0
-      , DataChange [String "a"] (Timestamp  0         []) 0
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 0
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 0
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 0
       ]
       []
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-      , DataChange [String "a"] (Timestamp  0         []) (-1)
-      , DataChange [String "a"] (Timestamp  0         []) 1
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1
       ]
-      [ DataChange [String "a"] (Timestamp  0         []) 1]
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1]
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-      , DataChange [String "b"] (Timestamp  0         []) 1
-      , DataChange [String "a"] (Timestamp  0         []) 1
-      , DataChange [String "b"] (Timestamp  0         []) (-1)
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) 1
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1
+      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) (-1)
       ]
-      [ DataChange [String "a"] (Timestamp  0         []) 2]
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 2]
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-      , DataChange [String "b"] (Timestamp  0         []) 1
-      , DataChange [String "a"] (Timestamp  0         []) (-1)
-      , DataChange [String "b"] (Timestamp  0         []) (-1)
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) 1
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
+      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) (-1)
       ]
       []
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-      , DataChange [String "b"] (Timestamp  0         []) 1
-      , DataChange [String "a"] (Timestamp  0         []) (-1)
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) 1
+      , DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) (-1)
       ]
-      [ DataChange [String "b"] (Timestamp  0         []) 1]
+      [ DataChange (HM.fromList [("b", Null)]) (Timestamp  0         []) 1]
       `shouldBe` True
     mkDataChangeBatchChecker
-      [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
       ]
-      [ DataChange [String "a"] (Timestamp  0         []) 1]
+      [ DataChange (HM.fromList [("a", Null)]) (Timestamp  0         []) 1]
       `shouldBe` True
     mkDataChangeBatch
-      [ DataChange [Number 1] (Timestamp (0 :: Int) []) 1
-      , DataChange [Number 2] (Timestamp (0 :: Int) []) 1
-      , DataChange [Number 3] (Timestamp (3 :: Int) []) 1]
+      [ DataChange (HM.fromList [("a", Number 1)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (HM.fromList [("b", Number 2)]) (Timestamp (0 :: Int) []) 1
+      , DataChange (HM.fromList [("c", Number 3)]) (Timestamp (3 :: Int) []) 1]
       `shouldBe`
       DataChangeBatch
       { dcbLowerBound = Set.singleton (Timestamp 0 [])
-      , dcbChanges = [ DataChange [Number 1.0] (Timestamp 0 []) 1
-                     , DataChange [Number 2.0] (Timestamp 0 []) 1
-                     , DataChange [Number 3.0] (Timestamp 3 []) 1
+      , dcbChanges = [ DataChange (HM.fromList [("b", Number 2)]) (Timestamp 0 []) 1
+                     , DataChange (HM.fromList [("c", Number 3)]) (Timestamp 3 []) 1
+                     , DataChange (HM.fromList [("a", Number 1)]) (Timestamp 0 []) 1
                      ]
       }
 
@@ -319,94 +320,94 @@ index :: Spec
 index = describe "Index" $ do
   it "add DataChangeBatch to Index" $ do
     addChangeBatchToIndexChecker
-      [mkDataChangeBatch [DataChange [String "a"] (Timestamp (0 :: Int) []) 1]]
-      (Index [mkDataChangeBatch [DataChange [String "a"] (Timestamp 0 []) 1]])
+      [mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]]
+      (Index [mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp 0 []) 1]])
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [DataChange [String "a"] (Timestamp (0 :: Int) []) 1]
-      , mkDataChangeBatch [DataChange [String "a"] (Timestamp (0 :: Int) []) 1]
+      [ mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
+      , mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
       ]
-      (Index [mkDataChangeBatch [DataChange [String "a"] (Timestamp (0 :: Int) []) 2]])
+      (Index [mkDataChangeBatch [DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 2]])
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
+      [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
                           ]
-      , mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
       ]
-      (Index [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
+      (Index [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
-             , mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1]
+             , mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1]
              ]
       )
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
+      [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
                           ]
-      , mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "b"] (Timestamp (0 :: Int) []) (-1)
+      , mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) (-1)
                           ]
       ]
-      (Index [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 2]
+      (Index [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 2]
              ]
       )
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "b"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "c"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "d"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "e"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "f"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "g"] (Timestamp (0 :: Int) []) 1 ]
+      [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
       ]
-      (Index [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "c"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "d"] (Timestamp (0 :: Int) []) 1
+      (Index [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
-             , mkDataChangeBatch [ DataChange [String "e"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "f"] (Timestamp (0 :: Int) []) 1
+             , mkDataChangeBatch [ DataChange (HM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
-             , mkDataChangeBatch [ DataChange [String "g"] (Timestamp (0 :: Int) []) 1 ]
+             , mkDataChangeBatch [ DataChange (HM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
              ]
       )
       `shouldBe` True
     addChangeBatchToIndexChecker
-      [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "b"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "c"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "d"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "e"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "f"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "g"] (Timestamp (0 :: Int) []) 1 ]
-      , mkDataChangeBatch [ DataChange [String "h"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "i"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "j"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "k"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "l"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "m"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "n"] (Timestamp (0 :: Int) []) 1
-                          , DataChange [String "o"] (Timestamp (0 :: Int) []) 1
+      [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1 ]
+      , mkDataChangeBatch [ DataChange (HM.fromList [("h", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("i", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("j", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("k", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("l", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("m", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("n", Null)]) (Timestamp (0 :: Int) []) 1
+                          , DataChange (HM.fromList [("o", Null)]) (Timestamp (0 :: Int) []) 1
                           ]
       ]
-      (Index [ mkDataChangeBatch [ DataChange [String "a"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "b"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "c"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "d"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "e"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "f"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "g"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "h"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "i"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "j"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "k"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "l"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "m"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "n"] (Timestamp (0 :: Int) []) 1
-                                 , DataChange [String "o"] (Timestamp (0 :: Int) []) 1
+      (Index [ mkDataChangeBatch [ DataChange (HM.fromList [("a", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("b", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("c", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("d", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("e", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("f", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("g", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("h", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("i", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("j", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("k", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("l", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("m", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("n", Null)]) (Timestamp (0 :: Int) []) 1
+                                 , DataChange (HM.fromList [("o", Null)]) (Timestamp (0 :: Int) []) 1
                                  ]
              ]
       )
