@@ -516,7 +516,9 @@ processFrontierUpdates shard@Shard{..} = do
                              L.foldl (\acc' _ -> reducer acc' x) acc [1..n]
                           ) initValue sortedInputs
                     let outputChanges' =
-                          L.map (\change -> change {dcDiff = - (dcDiff change)})
+                          L.map (\change -> change { dcDiff = - (dcDiff change)
+                                                   , dcTimestamp = tsToCheck
+                                                   })
                             (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
                     let newOutput = DataChange (key <> inputValue) tsToCheck 1
                         outputChanges'' = outputChanges' ++ [newOutput]
