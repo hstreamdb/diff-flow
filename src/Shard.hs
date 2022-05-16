@@ -14,6 +14,7 @@ import           Control.Concurrent.MVar
 import           Control.Exception
 import           Control.Monad
 import           Data.Hashable           (Hashable)
+import           Data.HashMap.Lazy       (HashMap)
 import qualified Data.HashMap.Lazy       as HM
 import qualified Data.List               as L
 import Data.Set (Set)
@@ -479,11 +480,11 @@ processFrontierUpdates shard@Shard{..} = do
           shardNodeStates' <- readMVar shardNodeStates
           let inputIndex_m = getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
           pendingCorrections <- readTVarIO pendingCorrections_m
-          mapM_ (goPendingCorrection nodeSpec (tsfFrontier inputTsf) inputIndex_m index_m) (HM.toList pendingCorrections)
+          mapM_ (goPendingCorrection nodeSpec (tsfFrontier inputTsf) inputIndex_m index_m pendingCorrections_m) (HM.toList pendingCorrections)
         _ -> return ()
       where
-        goPendingCorrection :: NodeSpec -> Frontier a -> TVar (Index a) -> TVar (Index a) -> (Row, Set (Timestamp a)) -> IO ()
-        goPendingCorrection (ReduceSpec _ initValue keygen (Reducer reducer)) inputFt inputIndex_m outputIndex_m (key, timestamps) = do
+        goPendingCorrection :: NodeSpec -> Frontier a -> TVar (Index a) -> TVar (Index a) -> TVar (HashMap Row (Set (Timestamp a))) -> (Row, Set (Timestamp a)) -> IO ()
+        goPendingCorrection (ReduceSpec _ initValue keygen (Reducer reducer)) inputFt inputIndex_m outputIndex_m pendingCorrections_m (key, timestamps) = do
           (tssToCheck, ftChanges) <-
             foldM (\(curTssToCheck,curFtChanges) ts -> do
                       if inputFt `causalCompare` ts == PGT then do
@@ -495,6 +496,8 @@ processFrontierUpdates shard@Shard{..} = do
                         else return (curTssToCheck,curFtChanges)
                   ) ([],[]) timestamps
           let realTimestamps = L.foldl (flip Set.delete) timestamps tssToCheck
+          atomically $
+            modifyTVar pendingCorrections_m (HM.insert key realTimestamps)
           mapM_ (\tsToCheck -> do
                     inputIndex  <- readTVarIO inputIndex_m
                     outputIndex <- readTVarIO outputIndex_m
