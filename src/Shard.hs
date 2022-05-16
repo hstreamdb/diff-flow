@@ -160,7 +160,8 @@ advanceInput shard@Shard{..} node@Node{..} ts = do
 
 emitChangeBatch :: (Hashable a, Ord a, Show a) => Shard a -> Node -> DataChangeBatch a -> IO ()
 emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
-  print $ "Emitting from node " <> show node <> " with DataChangeBatch: " <> show dcb
+  let spec = graphNodeSpecs shardGraph HM.! nodeId node
+  print $ "Emitting from node " <> show node <> "(" <> show spec <> ") with DataChangeBatch: " <> show dcb
   case HM.lookup (nodeId node) (graphNodeSpecs shardGraph) of
     Nothing   -> error $ "No matching node found: " <> show (nodeId node)
     Just spec -> do
