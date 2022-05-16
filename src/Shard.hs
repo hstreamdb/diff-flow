@@ -186,10 +186,6 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
           toNodeInputs = graphDownstreamNodes shardGraph HM.! nodeId node
       mapM_
         (\toNodeInput -> do
-            -- ???: Is it correct? I do not see any reason to update the
-            -- input frontier(which then updates the output frontier!)
-            -- Also line 177
-            -- Remove both of them seems still OK...
             mapM_ (\ts -> queueFrontierChange shard toNodeInput ts 1) dcbLowerBound
             let newCbi = ChangeBatchAtNodeInput
                          { cbiChangeBatch = dcb
@@ -210,10 +206,6 @@ processChangeBatch shard@Shard{..} = do
       let nodeInput   = cbiNodeInput cbi
           changeBatch = cbiChangeBatch cbi
           node = nodeInputNode nodeInput
-      -- ???: Is it correct? I do not see any reason to update the
-      -- input frontier(which then updates the output frontier!)
-      -- Also line 150
-      -- Remove both of them seems still OK...
       mapM_ (\ts -> queueFrontierChange shard nodeInput ts (-1)) (dcbLowerBound changeBatch)
       shardNodeStates'    <- readMVar shardNodeStates
       case graphNodeSpecs shardGraph HM.! nodeId node of
@@ -516,7 +508,9 @@ processFrontierUpdates shard@Shard{..} = do
                              L.foldl (\acc' _ -> reducer acc' x) acc [1..n]
                           ) initValue sortedInputs
                     let outputChanges' =
-                          L.map (\change -> change {dcDiff = - (dcDiff change)})
+                          L.map (\change -> change { dcDiff = - (dcDiff change)
+                                                   , dcTimestamp = tsToCheck
+                                                   })
                             (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
                     let newOutput = DataChange (key <> inputValue) tsToCheck 1
                         outputChanges'' = outputChanges' ++ [newOutput]
