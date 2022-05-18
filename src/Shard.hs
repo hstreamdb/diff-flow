@@ -253,8 +253,12 @@ processChangeBatch shard@Shard{..} = do
                       0 -> readTVarIO ft2_m
                       1 -> readTVarIO ft1_m
                       _ -> error "impossible!"
+          let (keygen1', keygen2', joiner') = case inputIx of
+                                                0 -> (keygen2, keygen1, flip joiner)
+                                                1 -> (keygen1, keygen2, joiner)
+                                                _ -> error "impossible!"
           let outputChangeBatch =
-                mergeJoinIndex otherIndex joinFt changeBatch keygen1 keygen2 joiner
+                mergeJoinIndex otherIndex joinFt changeBatch keygen1' keygen2' joiner'
           unless (L.null $ dcbChanges outputChangeBatch) $
             emitChangeBatch shard node outputChangeBatch
           let inputFt = fromJust $ cbiInputFrontier cbi -- FIXME: unsafe
