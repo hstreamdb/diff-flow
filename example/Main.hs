@@ -22,11 +22,12 @@ main = do
       (builder_5, node_2') = addNode builder_4 subgraph_0 (IndexSpec node_2)
 
 
-  let keygen1 o = let [(k1,v1), (k2,v2)] = HM.toList o in HM.fromList [(k2,v2)]
-      keygen2 o = let [(k1,v1), (k2,v2)] = HM.toList o in HM.fromList [(k1,v1)]
-      rowgen o1 o2 = let [(k1,v1), (k2,v2)] = HM.toList o1
-                         [(k1',v1'), (k2',v2')] = HM.toList o2
-                      in HM.fromList [(k1,v1), (k2,v2), (k1',v1'), (k2',v2')]
+  let keygen1 o = HM.fromList $ [("b", (HM.!) o "b")]
+      keygen2 o = HM.fromList $ [("b", (HM.!) o "b")]
+      rowgen o1 o2 = HM.fromList $ [ ("a", (HM.!) o1 "a")
+                                   , ("b", (HM.!) o1 "b")
+                                   , ("c", (HM.!) o2 "c")
+                                   ]
   let (builder_6, node_3) = addNode builder_5 subgraph_0 (JoinSpec node_1' node_2' keygen1 keygen2 (Joiner rowgen))
 
   let (builder_7, node_4) = addNode builder_6 subgraph_0 (OutputSpec node_3)
@@ -37,14 +38,25 @@ main = do
   forkIO $ run shard
   forkIO . forever $ popOutput shard node_4 (\dcb -> print $ "---> Output DataChangeBatch: " <> show dcb)
 
-  pushInput shard node_1
-    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (0 :: Word32) []) 1)
   pushInput shard node_2
-    (DataChange (HM.fromList [("b", Number 2), ("c", Number 3)]) (Timestamp (0 :: Word32) []) 1)
+    (DataChange (HM.fromList [("b", Number 2), ("c", Number 3)]) (Timestamp (1 :: Word32) []) 1)
 
-  flushInput shard node_1
   flushInput shard node_2
-  advanceInput shard node_1 (Timestamp 1 [])
-  advanceInput shard node_2 (Timestamp 1 [])
+  advanceInput shard node_2 (Timestamp 6 [])
+
+  pushInput shard node_1
+    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (1 :: Word32) []) 1)
+  pushInput shard node_1
+    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (2 :: Word32) []) 1)
+  flushInput shard node_1
+  advanceInput shard node_1 (Timestamp 3 [])
+
+  threadDelay 1000000
+
+  pushInput shard node_1
+    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (4 :: Word32) []) 1)
+  pushInput shard node_1
+    (DataChange (HM.fromList [("a", Number 1), ("b", Number 2)]) (Timestamp (5 :: Word32) []) 1)
+  advanceInput shard node_1 (Timestamp 6 [])
 
   threadDelay 10000000
