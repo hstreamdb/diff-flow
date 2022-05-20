@@ -347,6 +347,18 @@ getChangesForKey (Index batches) p =
             in resultOfThisBatch ++ acc
           ) [] batches
 
+getCountForKey :: (Ord a) => Index a -> Row -> Timestamp a -> Int
+getCountForKey (Index batches) row ts =
+  L.foldl (\acc batch ->
+             let countOfThisBatch =
+                   L.foldl (\acc' change@DataChange{..} ->
+                              if dcTimestamp <.= ts
+                              then acc' + dcDiff
+                              else acc'
+                           ) 0 (dcbChanges batch)
+              in countOfThisBatch + acc
+          ) 0 batches
+
 mergeJoinIndex :: (Hashable a, Ord a, Show a)
                => Index a
                -> Frontier a

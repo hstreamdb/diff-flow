@@ -468,7 +468,7 @@ processFrontierUpdates shard@Shard{..} = do
           shardNodeStates' <- readMVar shardNodeStates
           let inputIndex_m = getIndexFromState (shardNodeStates' HM.! nodeId inputNode)
           pendingCorrections <- readTVarIO pendingCorrections_m
-          undefined
+          mapM_ (goPendingCorrection nodeSpec (tsfFrontier inputTsf) inputIndex_m index_m pendingCorrections_m) (HM.toList pendingCorrections)
         ReduceState index_m pendingCorrections_m   -> do
           let inputNode = V.head $ getInputsFromSpec nodeSpec
           shardNodeFrontiers' <- readMVar shardNodeFrontiers
@@ -480,7 +480,7 @@ processFrontierUpdates shard@Shard{..} = do
         _ -> return ()
       where
         goPendingCorrection :: NodeSpec -> Frontier a -> TVar (Index a) -> TVar (Index a) -> TVar (HashMap Row (Set (Timestamp a))) -> (Row, Set (Timestamp a)) -> IO ()
-        goPendingCorrection (ReduceSpec _ initValue keygen (Reducer reducer)) inputFt inputIndex_m outputIndex_m pendingCorrections_m (key, timestamps) = do
+        goPendingCorrection nodeSpec inputFt inputIndex_m outputIndex_m pendingCorrections_m (key, timestamps) = do
           (tssToCheck, ftChanges) <-
             foldM (\(curTssToCheck,curFtChanges) ts -> do
                       if inputFt `causalCompare` ts == PGT then do
@@ -494,37 +494,59 @@ processFrontierUpdates shard@Shard{..} = do
           let realTimestamps = L.foldl (flip Set.delete) timestamps tssToCheck
           atomically $
             modifyTVar pendingCorrections_m (HM.insert key realTimestamps)
-          mapM_ (\tsToCheck -> do
+          newOutputdcb <- foldM (\acc tsToCheck -> do
                     inputIndex  <- readTVarIO inputIndex_m
                     outputIndex <- readTVarIO outputIndex_m
-                    let inputChanges  = getChangesForKey inputIndex  (\row -> keygen row == key)
-                        outputChanges = getChangesForKey outputIndex (\row -> keygen row == key)
-                    let inputBag = L.foldl (\acc DataChange{..} ->
-                                              MultiSet.insertMany dcRow dcDiff acc)
-                                   MultiSet.empty
-                                   (L.filter (\change ->
-                                                dcTimestamp change <.= tsToCheck)
-                                     inputChanges)
-                    let sortedInputs = L.sort $ MultiSet.toOccurList inputBag
-                    let inputValue = L.foldl
-                          (\acc (x,n) ->
-                             -- do 'reducer' for 'n' times
-                             L.foldl (\acc' _ -> reducer acc' x) acc [1..n]
-                          ) initValue sortedInputs
-                    let outputChanges' =
-                          L.map (\change -> change { dcDiff = - (dcDiff change)
-                                                   , dcTimestamp = tsToCheck
-                                                   })
-                            (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
-                    let newOutput = DataChange (key <> inputValue) tsToCheck 1
-                        outputChanges'' = outputChanges' ++ [newOutput]
-                    let changeBatch = mkDataChangeBatch outputChanges''
-                    atomically $
-                      modifyTVar outputIndex_m (flip addChangeBatchToIndex changeBatch)
-                    unless (L.null $ dcbChanges changeBatch) $
-                      emitChangeBatch shard node changeBatch
-                    mapM_ (\FrontierChange{..} -> applyFrontierChange shard node frontierChangeTs frontierChangeDiff) ftChanges
-                ) (L.sort tssToCheck)
+
+                    case nodeSpec of
+                      ReduceSpec _ initValue keygen (Reducer reducer) -> do
+                        let inputChanges  = getChangesForKey inputIndex  (\row -> keygen row == key)
+                            outputChanges = getChangesForKey outputIndex (\row -> keygen row == key)
+                        let inputBag = L.foldl (\acc DataChange{..} ->
+                                                  MultiSet.insertMany dcRow dcDiff acc)
+                                       MultiSet.empty
+                                       (L.filter (\change ->
+                                                    dcTimestamp change <.= tsToCheck)
+                                         inputChanges)
+                        let sortedInputs = L.sort $ MultiSet.toOccurList inputBag
+                        let inputValue = L.foldl
+                              (\acc (x,n) ->
+                                 -- do 'reducer' for 'n' times
+                                 L.foldl (\acc' _ -> reducer acc' x) acc [1..n]
+                              ) initValue sortedInputs
+                        let outputChanges' =
+                              L.map (\change -> change { dcDiff = - (dcDiff change)
+                                                       , dcTimestamp = tsToCheck
+                                                       })
+                                (L.filter (\change -> dcTimestamp change <.= tsToCheck) outputChanges)
+                        let newOutput = DataChange (key <> inputValue) tsToCheck 1
+                        let outputChanges'' = outputChanges' ++ [newOutput]
+                        let thisChangeBatch = mkDataChangeBatch outputChanges''
+                        atomically $
+                          modifyTVar outputIndex_m (flip addChangeBatchToIndex thisChangeBatch)
+                        return $ updateDataChangeBatch acc (\xs -> xs ++ outputChanges'')
+                      DistinctSpec _ -> do
+                        let inputChanges = getChangesForKey inputIndex (== key)
+                        let inputCount = L.foldl (\acc DataChange{..} -> if dcTimestamp <.= tsToCheck then acc + dcDiff else acc) 0 inputChanges
+                        let outputCount = getCountForKey outputIndex key tsToCheck
+                        let correctOutputCount = if outputCount == 0 then 0 else 1
+                        let diffOutputCount = correctOutputCount - outputCount
+                        if (diffOutputCount /= 0) then do
+                          let change = DataChange
+                                       { dcRow = key
+                                       , dcTimestamp = tsToCheck
+                                       , dcDiff = diffOutputCount
+                                       }
+                          let thisChangeBatch = mkDataChangeBatch [change]
+                          atomically $
+                            modifyTVar outputIndex_m (flip addChangeBatchToIndex thisChangeBatch)
+                          return $ updateDataChangeBatch acc (\xs -> xs ++ [change])
+                        else do
+                          return acc
+                ) emptyDataChangeBatch (L.sort tssToCheck)
+          unless (L.null $ dcbChanges newOutputdcb) $
+            emitChangeBatch shard node newOutputdcb
+          mapM_ (\FrontierChange{..} -> applyFrontierChange shard node frontierChangeTs frontierChangeDiff) ftChanges
 
 getOutputNodes :: Graph -> [Node]
 getOutputNodes Graph{..} = L.map Node . HM.keys $
