@@ -412,29 +412,29 @@ applyFrontierChange shard@Shard{..} node ts diff = do
 
 processFrontierUpdates :: forall a. (Hashable a, Ord a, Show a) => Shard a -> IO ()
 processFrontierUpdates shard@Shard{..} = do
-  shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
-  updatedNodes <- go shardUnprocessedFrontierUpdates'
+  updatedNodes <- go
   mapM_ specialActions updatedNodes
   where
     -- process pointstamps in causal order to ensure termination
-    go :: HM.HashMap (Pointstamp a) Int -> IO (Set Node) -- return: updatedNodes
-    go unprocessedNow = if HM.null unprocessedNow then return Set.empty else do
-      modifyMVar_ shardUnprocessedFrontierUpdates (return . HM.delete minKey)
+    go :: IO (Set Node) -- return: updatedNodes
+    go = do
+      unprocessedNow <- readMVar shardUnprocessedFrontierUpdates
+      if HM.null unprocessedNow then return Set.empty else do
+        let minKey  = L.minimum (HM.keys unprocessedNow)
+            node    = nodeInputNode (pointstampNodeInput minKey)
+            inputTs = pointstampTimestamp minKey
+            diff    = unprocessedNow HM.! minKey
+        modifyMVar_ shardUnprocessedFrontierUpdates (return . HM.delete minKey)
 
-      let outputTs = case graphNodeSpecs shardGraph HM.! nodeId node of
-            TimestampPushSpec _ -> pushCoord inputTs
-            TimestampIncSpec  _ -> incCoord inputTs
-            TimestampPopSpec  _ -> popCoord inputTs
-            _                   -> inputTs
-      applyFrontierChange shard node outputTs diff
+        let outputTs = case graphNodeSpecs shardGraph HM.! nodeId node of
+              TimestampPushSpec _ -> pushCoord inputTs
+              TimestampIncSpec  _ -> incCoord inputTs
+              TimestampPopSpec  _ -> popCoord inputTs
+              _                   -> inputTs
+        applyFrontierChange shard node outputTs diff
 
-      loopResult <- go $ HM.delete minKey unprocessedNow
-      return $ Set.insert node loopResult
-      where
-        minKey = L.minimum (HM.keys unprocessedNow)
-        node = nodeInputNode (pointstampNodeInput minKey)
-        inputTs = pointstampTimestamp minKey
-        diff = unprocessedNow HM.! minKey
+        loopResult <- go
+        return $ Set.insert node loopResult
 
     specialActions :: Node -> IO ()
     specialActions node = do
