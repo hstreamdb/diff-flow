@@ -529,7 +529,7 @@ processFrontierUpdates shard@Shard{..} = do
                         let inputChanges = getChangesForKey inputIndex (== key)
                         let inputCount = L.foldl (\acc DataChange{..} -> if dcTimestamp <.= tsToCheck then acc + dcDiff else acc) 0 inputChanges
                         let outputCount = getCountForKey outputIndex key tsToCheck
-                        let correctOutputCount = if outputCount == 0 then 0 else 1
+                        let correctOutputCount = if inputCount == 0 then 0 else 1
                         let diffOutputCount = correctOutputCount - outputCount
                         if (diffOutputCount /= 0) then do
                           let change = DataChange
