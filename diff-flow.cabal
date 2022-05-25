@@ -2,6 +2,8 @@ cabal-version:      2.4
 name:               diff-flow
 version:            0.1.0.0
 synopsis:           Differential stream processing library.
+description:        Please refer to the README on Github at
+                    <https://github.com/hstreamdb/diff-flow#readme>
 license:            BSD-3-Clause
 license-file:       LICENSE
 copyright:          Copyright (c) 2022 Commelina
@@ -13,6 +15,10 @@ homepage:           https://github.com/hstreamdb/diff-flow
 bug-reports:        https://github.com/hstreamdb/diff-flow/issues
 build-type:         Simple
 extra-source-files: CHANGELOG.md
+
+source-repository head
+  type:     git
+  location: https://github.com/hstreamdb/diff-flow
 
 library
   exposed-modules:
