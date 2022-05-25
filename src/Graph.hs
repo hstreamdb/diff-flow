@@ -34,7 +34,7 @@ data NodeInput = NodeInput
 newtype Mapper = Mapper { mapper :: Row -> Row }
 newtype Filter = Filter { filterF :: Row -> Bool }
 newtype Joiner = Joiner { joiner :: Row -> Row -> Row }
-newtype Reducer = Reducer { reducer :: Row -> Row -> Row }
+newtype Reducer = Reducer { reducer :: Row -> Row -> Row } -- \acc x -> acc'
 type KeyGenerator = Row -> Row
 
 {-
