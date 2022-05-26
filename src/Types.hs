@@ -352,7 +352,7 @@ getCountForKey (Index batches) row ts =
   L.foldl (\acc batch ->
              let countOfThisBatch =
                    L.foldl (\acc' change@DataChange{..} ->
-                              if dcTimestamp <.= ts
+                              if dcRow == row && dcTimestamp <.= ts
                               then acc' + dcDiff
                               else acc'
                            ) 0 (dcbChanges batch)
