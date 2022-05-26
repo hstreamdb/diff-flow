@@ -31,10 +31,11 @@ main = do
       (builder_8, swapped_edges_index) = addNode builder_7 subgraph_1 (IndexSpec swapped_edges)
 
   let joiner = Joiner (\row1 row2 -> let v1  = (HM.!) row1 "v1"
+                                         v2  = (HM.!) row1 "v2"
                                          v1' = (HM.!) row2 "v1"
                                          v2' = (HM.!) row2 "v2"
-                                      in HM.fromList [ ("v1", v1)
-                                                     , ("v2", v1')
+                                      in HM.fromList [ ("v1", v1')
+                                                     , ("v2", v2)
                                                      , ("v3", v2')
                                                      ]
                       )
@@ -46,7 +47,7 @@ main = do
                                     v2 = (HM.!) row "v2"
                                     v3 = (HM.!) row "v3"
                                  in HM.fromList [("v1", v3), ("v2", v2)]
-                       ) -- FIX: drop middle
+                       ) -- drop middle
   let (builder_10, without_middle) = addNode builder_9 subgraph_1 (MapSpec joined mapper2)
 
   let (builder_11, reach) = addNode builder_10 subgraph_1 (UnionSpec edges_1 without_middle)
@@ -59,9 +60,10 @@ main = do
   let reducer = Reducer (\acc row -> let (String reduced) = (HM.!) acc "reduced"
                                          (String v2)      = (HM.!) row "v2"
                                       in HM.fromList [("reduced", String (reduced <> v2))]
-                        ) -- FIX: acc ++ row[1]
+                        ) -- acc ++ row[1]
       initValue = HM.fromList [("reduced", String "")]
-  let (builder_15, reach_summary) = addNode builder_14 subgraph_1 (ReduceSpec distinct_reach_index initValue (\_ -> HM.fromList []) reducer)
+      keygen = \row -> let v1 = (HM.!) row "v1" in HM.fromList [("v1", v1)]
+  let (builder_15, reach_summary) = addNode builder_14 subgraph_1 (ReduceSpec distinct_reach_index initValue keygen reducer)
       (builder_16, reach_summary_out) = addNode builder_15 subgraph_1 (OutputSpec reach_summary)
 
   ----
@@ -70,7 +72,7 @@ main = do
   shard <- buildShard graph
   forkIO $ run shard
 
-  forkIO . forever $ popOutput shard reach_out (\dcb -> print $ "[reach_out] ---> Output DataChangeBatch: " <> show dcb)
+  forkIO . forever $ popOutput shard reach_out (\dcb -> print $ "[reach_out        ] ---> Output DataChangeBatch: " <> show dcb)
   forkIO . forever $ popOutput shard reach_summary_out (\dcb -> print $ "[reach_summary_out] ---> Output DataChangeBatch: " <> show dcb)
 
   threadDelay 1000000
@@ -96,8 +98,7 @@ main = do
 
   advanceInput shard edges (Timestamp (1 :: Word32) [])
 
-  threadDelay 2000000
+  threadDelay 5000000
   advanceInput shard edges (Timestamp (2 :: Word32) [])
-
 
   threadDelay $ 100 * 1000 * 1000
