@@ -163,7 +163,6 @@ advanceInput shard@Shard{..} node@Node{..} ts = do
 emitChangeBatch :: (Hashable a, Ord a, Show a) => Shard a -> Node -> DataChangeBatch a -> IO ()
 emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
   let spec = graphNodeSpecs shardGraph HM.! nodeId node
-  print $ "Emitting from node " <> show node <> "(" <> show spec <> ") with DataChangeBatch: " <> show dcb
   case HM.lookup (nodeId node) (graphNodeSpecs shardGraph) of
     Nothing   -> error $ "No matching node found: " <> show (nodeId node)
     Just spec -> do
@@ -187,6 +186,9 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
           toNodeInputs = graphDownstreamNodes shardGraph HM.! nodeId node
       mapM_
         (\toNodeInput -> do
+            let toNode = nodeInputNode toNodeInput
+                toSpec = graphNodeSpecs shardGraph HM.! nodeId toNode
+            print $ "Emitting from node " <> show node <> "(" <> show spec <> ") to node " <> show toNode <> "(" <> show toSpec <>  ") with DataChangeBatch: " <> show dcb
             mapM_ (\ts -> queueFrontierChange shard toNodeInput ts 1) dcbLowerBound
             let newCbi = ChangeBatchAtNodeInput
                          { cbiChangeBatch = dcb
