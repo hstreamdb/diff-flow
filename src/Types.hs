@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveGeneric         #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE RecordWildCards       #-}
@@ -250,6 +251,17 @@ data DataChange a = DataChange
 deriving instance (Eq a) => Eq (DataChange a)
 deriving instance (Ord a) => Ord (DataChange a)
 deriving instance (Show a) => Show (DataChange a)
+
+compareDataChangeByTimeFirst :: (Ord a)
+                             => DataChange a
+                             -> DataChange a
+                             -> Ordering
+compareDataChangeByTimeFirst dc1 dc2 =
+  case dcTimestamp dc1 `causalCompare` dcTimestamp dc2 of
+    PLT   -> LT
+    PEQ   -> EQ
+    PGT   -> GT
+    PNONE -> dcRow dc1 `compare` dcRow dc2
 
 data DataChangeBatch a = DataChangeBatch
   { dcbLowerBound :: Frontier a

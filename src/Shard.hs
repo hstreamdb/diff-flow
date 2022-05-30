@@ -9,6 +9,7 @@ module Shard where
 
 import           Graph
 import           Types
+import qualified Weird as Weird
 
 import           Control.Concurrent.MVar
 import           Control.Exception
@@ -502,17 +503,18 @@ processFrontierUpdates shard@Shard{..} = do
                       ReduceSpec _ initValue keygen (Reducer reducer) -> do
                         let inputChanges  = getChangesForKey inputIndex  (\row -> keygen row == key)
                             outputChanges = getChangesForKey outputIndex (\row -> keygen row == key)
-                        let inputBag = L.foldl (\acc DataChange{..} ->
-                                                  MultiSet.insertMany dcRow dcDiff acc)
-                                       MultiSet.empty
-                                       (L.filter (\change ->
-                                                    dcTimestamp change <.= tsToCheck)
-                                         inputChanges)
-                        let sortedInputs = L.sort $ MultiSet.toOccurList inputBag
+
+                        -- coalesce same rows so the reducer function will only process positive results
+                        let inputBag = dcbChanges $ Weird.mkDataChangeBatch' (L.filter
+                                                           (\change -> dcTimestamp change <.= tsToCheck)
+                                                           inputChanges)
+                        -- sort changes by a well defined rule because the reducer may not be commutative
+                        let sortedInputs = L.sortBy compareDataChangeByTimeFirst inputBag
+
                         let inputValue = L.foldl
-                              (\acc (x,n) ->
-                                 -- do 'reducer' for 'n' times
-                                 L.foldl (\acc' _ -> reducer acc' x) acc [1..n]
+                              (\acc DataChange{..} ->
+                                 -- do 'reducer' for 'n' times, n=dcDiff
+                                 L.foldl (\acc' _ -> reducer acc' dcRow) acc [1..dcDiff]
                               ) initValue sortedInputs
                         let outputChanges' =
                               L.map (\change -> change { dcDiff = - (dcDiff change)
