@@ -46,6 +46,7 @@ test-suite lib-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
   other-modules:      DiffFlow.TypesSpec
+                      DiffFlow.LoopSpec
   hs-source-dirs:     test
   build-depends:
     , aeson                 <2
