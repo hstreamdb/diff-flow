@@ -32,4 +32,4 @@ updateDataChangeBatch' :: (Hashable a, Ord a, Show a)
                       -> ([DataChange a] -> [DataChange a])
                       -> DataChangeBatch a
 updateDataChangeBatch' oldBatch f =
-  mkDataChangeBatch $ f (dcbChanges oldBatch)
+  mkDataChangeBatch' $ f (dcbChanges oldBatch)
