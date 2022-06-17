@@ -2,8 +2,10 @@ cabal-version:      2.4
 name:               diff-flow
 version:            0.1.0.0
 synopsis:           Differential stream processing library.
-description:        Please refer to the README on Github at
-                    <https://github.com/hstreamdb/diff-flow#readme>
+description:
+  Please refer to the README on Github at
+  <https://github.com/hstreamdb/diff-flow#readme>
+
 license:            BSD-3-Clause
 license-file:       LICENSE
 copyright:          Copyright (c) 2022 Commelina
@@ -22,10 +24,10 @@ source-repository head
 
 library
   exposed-modules:
-    Graph
-    Shard
-    Types
-    Weird
+    DiffFlow.Graph
+    DiffFlow.Shard
+    DiffFlow.Types
+    DiffFlow.Weird
 
   build-depends:
     , aeson                 <2
@@ -45,8 +47,10 @@ library
 test-suite lib-test
   type:               exitcode-stdio-1.0
   main-is:            Spec.hs
-  other-modules:      DiffFlow.TypesSpec
-                      DiffFlow.LoopSpec
+  other-modules:
+    DiffFlow.LoopSpec
+    DiffFlow.TypesSpec
+
   hs-source-dirs:     test
   build-depends:
     , aeson                 <2

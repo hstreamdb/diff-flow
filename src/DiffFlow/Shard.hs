@@ -1,33 +1,33 @@
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DeriveGeneric       #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE StandaloneDeriving  #-}
 
-module Shard where
+module DiffFlow.Shard where
 
-import           Graph
-import           Types
-import qualified Weird as Weird
+import           DiffFlow.Graph
+import           DiffFlow.Types
+import qualified DiffFlow.Weird          as Weird
 
+import           Control.Concurrent      (threadDelay)
 import           Control.Concurrent.MVar
+import           Control.Concurrent.STM
 import           Control.Exception
 import           Control.Monad
+import           Data.Foldable.Extra     (findM)
 import           Data.Hashable           (Hashable)
 import           Data.HashMap.Lazy       (HashMap)
 import qualified Data.HashMap.Lazy       as HM
 import qualified Data.List               as L
-import Data.Set (Set)
-import qualified Data.Set                as Set
+import           Data.Maybe              (fromJust, isNothing)
 import qualified Data.MultiSet           as MultiSet
+import           Data.Set                (Set)
+import qualified Data.Set                as Set
+import qualified Data.Tuple              as Tuple
 import qualified Data.Vector             as V
-import GHC.Generics (Generic)
-import Control.Concurrent (threadDelay)
-import Data.Foldable.Extra (findM)
-import Data.Maybe (isNothing, fromJust)
-import           Control.Concurrent.STM
-import qualified Data.Tuple as Tuple
+import           GHC.Generics            (Generic)
 
 data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch a
@@ -126,7 +126,7 @@ pushInput Shard{..} Node{..} change = do
     Just (InputState frontier_m unflushedChanges_m) -> atomically $ do
       frontier <- readTVar frontier_m
       case frontier <.= (dcTimestamp change) of
-        False -> error $ "Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
+        False -> print $ "!!! Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
         True  -> modifyTVar unflushedChanges_m
                    (\batch -> updateDataChangeBatch batch (\xs -> xs ++ [change]))
     Just state -> error $ "Incorrect type of node state found: " <> show state

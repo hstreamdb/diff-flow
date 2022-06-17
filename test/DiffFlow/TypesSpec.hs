@@ -2,16 +2,16 @@
 
 module DiffFlow.TypesSpec where
 
-import           Data.Aeson    (Value (..))
-import           Data.Hashable (Hashable)
-import qualified Data.List     as L
-import           Data.MultiSet (MultiSet)
-import qualified Data.MultiSet as MultiSet
-import           Data.Set      (Set)
-import qualified Data.Set      as Set
+import           Data.Aeson          (Value (..))
+import           Data.Hashable       (Hashable)
 import qualified Data.HashMap.Strict as HM
+import qualified Data.List           as L
+import           Data.MultiSet       (MultiSet)
+import qualified Data.MultiSet       as MultiSet
+import           Data.Set            (Set)
+import qualified Data.Set            as Set
+import           DiffFlow.Types
 import           Test.Hspec
-import           Types
 
 spec :: Spec
 spec = describe "TypesSpec" $ do
@@ -43,9 +43,9 @@ timestampOrderChecker ts1 ts2 expectedCausalOrd =
     revCausalOrd PLT   = PGT
     revCausalOrd PGT   = PLT
     causalOrdtoOrd :: PartialOrdering -> Ordering
-    causalOrdtoOrd PEQ = EQ
-    causalOrdtoOrd PLT = LT
-    causalOrdtoOrd PGT = GT
+    causalOrdtoOrd PEQ   = EQ
+    causalOrdtoOrd PLT   = LT
+    causalOrdtoOrd PGT   = GT
     causalOrdtoOrd PNONE = error "unreachable"
 
 updateTimestampsWithFrontierChecker :: (Ord a, Show a)

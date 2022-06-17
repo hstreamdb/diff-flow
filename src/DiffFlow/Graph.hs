@@ -3,9 +3,9 @@
 {-# LANGUAGE GADTs           #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Graph where
+module DiffFlow.Graph where
 
-import           Types
+import           DiffFlow.Types
 
 import           Control.Concurrent.MVar
 import           Data.Aeson              (Value (..))
@@ -14,6 +14,7 @@ import qualified Data.Set                as Set
 import           Data.Word               (Word64)
 
 
+import           Control.Concurrent.STM
 import           Data.Hashable           (Hashable)
 import           Data.HashMap.Lazy       (HashMap)
 import qualified Data.HashMap.Lazy       as HM
@@ -22,7 +23,6 @@ import           Data.Proxy
 import           Data.Vector             (Vector)
 import qualified Data.Vector             as V
 import           GHC.Generics            (Generic)
-import           Control.Concurrent.STM
 
 newtype Node = Node { nodeId :: Int } deriving (Eq, Show, Ord, Generic, Hashable)
 
@@ -66,18 +66,18 @@ data NodeSpec
   | ReduceSpec        Node Row KeyGenerator Reducer -- input, init, kengen, reducer
 
 instance Show NodeSpec where
-  show InputSpec = "InputSpec"
-  show (MapSpec _ _) = "MapSpec"
-  show (FilterSpec _ _) = "FilterSpec"
-  show (IndexSpec _) = "IndexSpec"
-  show (JoinSpec _ _ _ _ _) = "JoinSpec"
-  show (OutputSpec _) = "OutputSpec"
+  show InputSpec             = "InputSpec"
+  show (MapSpec _ _)         = "MapSpec"
+  show (FilterSpec _ _)      = "FilterSpec"
+  show (IndexSpec _)         = "IndexSpec"
+  show (JoinSpec _ _ _ _ _)  = "JoinSpec"
+  show (OutputSpec _)        = "OutputSpec"
   show (TimestampPushSpec _) = "TimestampPushSpec"
-  show (TimestampIncSpec _) = "TimestampIncSpec"
-  show (TimestampPopSpec _) = "TimestampPopSpec"
-  show (UnionSpec _ _) = "UnionSpec"
-  show (DistinctSpec _) = "DistinctSpec"
-  show (ReduceSpec _ _ _ _) = "ReduceSpec"
+  show (TimestampIncSpec _)  = "TimestampIncSpec"
+  show (TimestampPopSpec _)  = "TimestampPopSpec"
+  show (UnionSpec _ _)       = "UnionSpec"
+  show (DistinctSpec _)      = "DistinctSpec"
+  show (ReduceSpec _ _ _ _)  = "ReduceSpec"
 
 outputIndex :: NodeSpec -> Bool
 outputIndex (IndexSpec _)        = True

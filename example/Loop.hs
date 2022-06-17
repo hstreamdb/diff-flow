@@ -8,9 +8,9 @@ import           Data.Aeson         (Value (..))
 import qualified Data.HashMap.Lazy  as HM
 import           Data.Word          (Word32)
 
-import           Graph
-import           Shard
-import           Types
+import           DiffFlow.Graph
+import           DiffFlow.Shard
+import           DiffFlow.Types
 
 main :: IO ()
 main = do

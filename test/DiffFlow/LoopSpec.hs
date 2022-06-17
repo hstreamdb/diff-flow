@@ -13,10 +13,10 @@ import qualified Data.MultiSet       as MultiSet
 import           Data.Set            (Set)
 import qualified Data.Set            as Set
 import           Data.Word
-import           Graph
-import           Shard
+import           DiffFlow.Graph
+import           DiffFlow.Shard
+import           DiffFlow.Types
 import           Test.Hspec
-import           Types
 
 
 
