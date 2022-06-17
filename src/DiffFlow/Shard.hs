@@ -123,11 +123,11 @@ pushInput Shard{..} Node{..} change = do
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
     Nothing -> error $ "No matching node found: " <> show nodeId
-    Just (InputState frontier_m unflushedChanges_m) -> atomically $ do
-      frontier <- readTVar frontier_m
+    Just (InputState frontier_m unflushedChanges_m) -> do
+      frontier <- readTVarIO frontier_m
       case frontier <.= (dcTimestamp change) of
         False -> print $ "!!! Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
-        True  -> modifyTVar unflushedChanges_m
+        True  -> atomically $ modifyTVar unflushedChanges_m
                    (\batch -> updateDataChangeBatch batch (\xs -> xs ++ [change]))
     Just state -> error $ "Incorrect type of node state found: " <> show state
 
