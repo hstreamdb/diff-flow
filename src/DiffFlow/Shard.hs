@@ -126,7 +126,7 @@ pushInput Shard{..} Node{..} change = do
     Just (InputState frontier_m unflushedChanges_m) -> atomically $ do
       frontier <- readTVar frontier_m
       case frontier <.= (dcTimestamp change) of
-        False -> error $ "Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
+        False -> print $ "!!! Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
         True  -> modifyTVar unflushedChanges_m
                    (\batch -> updateDataChangeBatch batch (\xs -> xs ++ [change]))
     Just state -> error $ "Incorrect type of node state found: " <> show state
