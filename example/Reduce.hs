@@ -1,17 +1,17 @@
-{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main where
 
-import Types
-import Graph
-import Shard
+import           DiffFlow.Graph
+import           DiffFlow.Shard
+import           DiffFlow.Types
 
-import Control.Concurrent
-import Control.Monad
-import Data.Aeson (Value (..))
-import Data.Word
-import qualified Data.HashMap.Lazy as HM
-import qualified Data.List as L
+import           Control.Concurrent
+import           Control.Monad
+import           Data.Aeson         (Value (..))
+import qualified Data.HashMap.Lazy  as HM
+import qualified Data.List          as L
+import           Data.Word
 
 main :: IO ()
 main = do

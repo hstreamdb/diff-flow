@@ -2,9 +2,9 @@
 
 module Main where
 
-import           Graph
-import           Shard
-import           Types
+import           DiffFlow.Graph
+import           DiffFlow.Shard
+import           DiffFlow.Types
 
 import           Control.Concurrent
 import           Control.Monad

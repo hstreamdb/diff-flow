@@ -6,7 +6,7 @@
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 
-module Types where
+module DiffFlow.Types where
 
 import           Control.Monad
 import           Data.Aeson        (Object (..), Value (..))

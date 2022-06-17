@@ -1,13 +1,13 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Weird where
+module DiffFlow.Weird where
 
+import           Data.Hashable     (Hashable)
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.List         as L
-import           Data.Hashable     (Hashable)
 import qualified Data.Set          as Set
 
-import Types
+import           DiffFlow.Types
 
 -- Quite weird.
 -- This one uses only 'dcRow' as key instead of '(dcRow, dcTimestamp)'
