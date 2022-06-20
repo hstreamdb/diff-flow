@@ -249,8 +249,16 @@ data DataChange a = DataChange
   , dcDiff      :: Int
   }
 deriving instance (Eq a) => Eq (DataChange a)
-deriving instance (Ord a) => Ord (DataChange a)
 deriving instance (Show a) => Show (DataChange a)
+instance (Ord a) => Ord (DataChange a) where
+  compare dc1 dc2 =
+    case dcTimestamp dc1 `compare` dcTimestamp dc2 of
+      LT -> LT
+      GT -> GT
+      EQ -> case dcRow dc1 `compare` dcRow dc2 of
+              LT -> LT
+              GT -> GT
+              EQ -> dcDiff dc1 `compare` dcDiff dc2
 
 compareDataChangeByTimeFirst :: (Ord a)
                              => DataChange a

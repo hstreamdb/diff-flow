@@ -254,8 +254,8 @@ dataChangeBatch = describe "DataChangeBatch" $ do
       DataChangeBatch
       { dcbLowerBound = Set.singleton (Timestamp 0 [])
       , dcbChanges = [ DataChange (HM.fromList [("b", Number 2)]) (Timestamp 0 []) 1
-                     , DataChange (HM.fromList [("c", Number 3)]) (Timestamp 3 []) 1
                      , DataChange (HM.fromList [("a", Number 1)]) (Timestamp 0 []) 1
+                     , DataChange (HM.fromList [("c", Number 3)]) (Timestamp 3 []) 1
                      ]
       }
 
