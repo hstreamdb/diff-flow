@@ -14,6 +14,7 @@ import qualified DiffFlow.Weird          as Weird
 import           Control.Concurrent      (threadDelay)
 import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
+import           Control.DeepSeq         (NFData)
 import           Control.Exception
 import           Control.Monad
 import           Data.Foldable.Extra     (findM)
@@ -28,6 +29,8 @@ import qualified Data.Set                as Set
 import qualified Data.Tuple              as Tuple
 import qualified Data.Vector             as V
 import           GHC.Generics            (Generic)
+import           Z.Data.Builder.Base     (stringUTF8)
+import           Z.IO.Logger
 
 data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch a
@@ -81,7 +84,7 @@ data Shard a = Shard
   , shardNodeFrontiers              :: MVar (HM.HashMap Int (TimestampsWithFrontier a))
   , shardUnprocessedChangeBatches   :: MVar [ChangeBatchAtNodeInput a]
   , shardUnprocessedFrontierUpdates :: MVar (HM.HashMap (Pointstamp a) Int)
-  }
+  } deriving (Generic, NFData)
 
 
 buildShard :: (Hashable a, Ord a, Show a, Bounded a) => Graph -> IO (Shard a)
@@ -126,7 +129,7 @@ pushInput Shard{..} Node{..} change = do
     Just (InputState frontier_m unflushedChanges_m) -> do
       frontier <- readTVarIO frontier_m
       case frontier <.= (dcTimestamp change) of
-        False -> print $ "!!! Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
+        False -> fatal . stringUTF8 $ "!!! Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
         True  -> atomically $ modifyTVar unflushedChanges_m
                    (\batch -> updateDataChangeBatch batch (\xs -> xs ++ [change]))
     Just state -> error $ "Incorrect type of node state found: " <> show state
@@ -188,7 +191,7 @@ emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
         (\toNodeInput -> do
             let toNode = nodeInputNode toNodeInput
                 toSpec = graphNodeSpecs shardGraph HM.! nodeId toNode
-            print $ "Emitting from node " <> show node <> "(" <> show spec <> ") to node " <> show toNode <> "(" <> show toSpec <>  ") with DataChangeBatch: " <> show dcb
+            debug . stringUTF8 $ "Emitting from node " <> show node <> "(" <> show spec <> ") to node " <> show toNode <> "(" <> show toSpec <>  ") with DataChangeBatch: " <> show dcb
             mapM_ (\ts -> queueFrontierChange shard toNodeInput ts 1) dcbLowerBound
             let newCbi = ChangeBatchAtNodeInput
                          { cbiChangeBatch = dcb
@@ -580,10 +583,10 @@ doWork shard@Shard{..} = do
   shardUnprocessedFrontierUpdates' <- readMVar shardUnprocessedFrontierUpdates
   shardNodeStates' <- readMVar shardNodeStates
   if not (L.null shardUnprocessedChangeBatches') then do
-    print $ "=== Working (processChangeBatch)..."
+    debug . stringUTF8 $ "=== Working (processChangeBatch)..."
     processChangeBatch shard else
     if not (L.null shardUnprocessedFrontierUpdates') then do
-      print $ "=== Working (processFrontierUpdates)..."
+      debug . stringUTF8 $ "=== Working (processFrontierUpdates)..."
       processFrontierUpdates shard else return ()
 
 popOutput :: (Show a) => Shard a -> Node -> (DataChangeBatch a -> IO ()) -> IO ()
@@ -602,7 +605,7 @@ popOutput Shard{..} node action = do
 run :: (Hashable a, Ord a, Show a) => Shard a -> IO ()
 run shard = forever $ do
   work <- hasWork shard
-  print $ "Loop: still has work?" <> show work
+  debug . stringUTF8 $ "Loop: still has work?" <> show work
   if work then do
     doWork shard else do
     threadDelay 2000000
