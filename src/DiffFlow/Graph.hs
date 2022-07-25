@@ -1,29 +1,31 @@
-{-# LANGUAGE DeriveAnyClass  #-}
-{-# LANGUAGE DeriveGeneric   #-}
-{-# LANGUAGE GADTs           #-}
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DeriveAnyClass    #-}
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 
 module DiffFlow.Graph where
 
-import           DiffFlow.Types
-
 import           Control.Concurrent.MVar
-import           Data.Aeson              (Value (..))
-import           Data.Set                (Set)
-import qualified Data.Set                as Set
-import           Data.Word               (Word64)
-
-
 import           Control.Concurrent.STM
 import           Control.DeepSeq         (NFData)
+import           Control.Exception       (throw)
+import           Data.Aeson              (Value (..))
 import           Data.Hashable           (Hashable)
 import           Data.HashMap.Lazy       (HashMap)
 import qualified Data.HashMap.Lazy       as HM
 import qualified Data.List               as L
 import           Data.Proxy
+import           Data.Set                (Set)
+import qualified Data.Set                as Set
+import qualified Data.Text               as T
 import           Data.Vector             (Vector)
 import qualified Data.Vector             as V
+import           Data.Word               (Word64)
 import           GHC.Generics            (Generic)
+
+import           DiffFlow.Error
+import           DiffFlow.Types
 
 newtype Node = Node { nodeId :: Int } deriving (Eq, Show, Ord, Generic, Hashable, NFData)
 
@@ -131,7 +133,7 @@ getIndexFromState :: NodeState a -> TVar (Index a)
 getIndexFromState (IndexState    index_m _) = index_m
 getIndexFromState (DistinctState index_m _) = index_m
 getIndexFromState (ReduceState   index_m _) = index_m
-getIndexFromState _ = error "Trying getting index from a node which does not contains index"
+getIndexFromState _ = throw $ BuildGraphError "Trying getting index from a node which does not contains index"
 
 specToState :: (Show a, Ord a, Hashable a) => NodeSpec -> IO (NodeState a)
 specToState InputSpec = do
@@ -207,7 +209,7 @@ connectLoop builder@GraphBuilder{..} later earlier =
              TimestampIncSpec _ ->
                V.update graphBuilderNodeSpecs
                  (V.singleton (earlierId, TimestampIncSpec (Just later)))
-             _ -> error "connectLoop: the earlier node can only be TimestampInc"
+             _ -> throw $ BuildGraphError "connectLoop: the earlier node can only be TimestampInc"
          }
   where earlierId = nodeId earlier
 
@@ -219,8 +221,8 @@ buildGraph GraphBuilder{..} =
           , graphSubgraphParents = subgraphParents
           , graphDownstreamNodes = downstreamNodes
           }
-    else error $ "GraphBuilder: NodeSpecs and Subgraphs have different length: "
-               <> show nodesNum <> ", " <> show (V.length graphBuilderSubgraphs)
+    else throw . BuildGraphError $ "GraphBuilder: NodeSpecs and Subgraphs have different length: "
+               <> T.pack (show nodesNum) <> ", " <> T.pack (show (V.length graphBuilderSubgraphs))
   where
     nodesNum = V.length graphBuilderNodeSpecs
     nodeSpecs = V.ifoldl (\acc i x -> HM.insert i x acc) HM.empty graphBuilderNodeSpecs

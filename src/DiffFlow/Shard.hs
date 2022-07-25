@@ -1,21 +1,19 @@
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DeriveGeneric       #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 
 module DiffFlow.Shard where
 
-import           DiffFlow.Graph
-import           DiffFlow.Types
-import qualified DiffFlow.Weird          as Weird
-
 import           Control.Concurrent      (threadDelay)
 import           Control.Concurrent.MVar
 import           Control.Concurrent.STM
 import           Control.DeepSeq         (NFData)
 import           Control.Exception
+import           Control.Exception       (throw)
 import           Control.Monad
 import           Data.Foldable.Extra     (findM)
 import           Data.Hashable           (Hashable)
@@ -26,11 +24,17 @@ import           Data.Maybe              (fromJust, isNothing)
 import qualified Data.MultiSet           as MultiSet
 import           Data.Set                (Set)
 import qualified Data.Set                as Set
+import qualified Data.Text               as T
 import qualified Data.Tuple              as Tuple
 import qualified Data.Vector             as V
 import           GHC.Generics            (Generic)
 import           Z.Data.Builder.Base     (stringUTF8)
 import           Z.IO.Logger
+
+import           DiffFlow.Error
+import           DiffFlow.Graph
+import           DiffFlow.Types
+import qualified DiffFlow.Weird          as Weird
 
 data ChangeBatchAtNodeInput a = ChangeBatchAtNodeInput
   { cbiChangeBatch   :: DataChangeBatch a
@@ -125,14 +129,14 @@ pushInput :: (Hashable a, Ord a, Show a) => Shard a -> Node -> DataChange a -> I
 pushInput Shard{..} Node{..} change = do
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
-    Nothing -> error $ "No matching node found: " <> show nodeId
+    Nothing -> throw . RunShardError $ "No matching node found: " <> T.pack (show nodeId)
     Just (InputState frontier_m unflushedChanges_m) -> do
       frontier <- readTVarIO frontier_m
       case frontier <.= (dcTimestamp change) of
         False -> fatal . stringUTF8 $ "!!! Can not push inputs whose ts < frontier of Input Node. Frontier = " <> show frontier <> ", ts = " <> show (dcTimestamp change)
         True  -> atomically $ modifyTVar unflushedChanges_m
                    (\batch -> updateDataChangeBatch batch (\xs -> xs ++ [change]))
-    Just state -> error $ "Incorrect type of node state found: " <> show state
+    Just state -> throw . RunShardError $ "Incorrect type of node state found: " <> T.pack (show state)
 
 --
 --  |INPUT NODE| -> ...
@@ -141,12 +145,12 @@ flushInput :: (Hashable a, Ord a, Show a) => Shard a -> Node -> IO ()
 flushInput shard@Shard{..} node@Node{..} = do
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
-    Nothing -> error $ "No matching node found: " <> show nodeId
+    Nothing -> throw . RunShardError $ "No matching node found: " <> T.pack (show nodeId)
     Just (InputState frontier_m unflushedChanges_m) -> do
       unflushedChangeBatch <- atomically $ swapTVar unflushedChanges_m emptyDataChangeBatch
       unless (L.null $ dcbChanges unflushedChangeBatch) $
         emitChangeBatch shard node unflushedChangeBatch
-    Just state -> error $ "Incorrect type of node state found: " <> show state
+    Just state -> throw . RunShardError $ "Incorrect type of node state found: " <> T.pack (show state)
 
 --
 --           Timestamp         -> |INPUT NODE| -> ...
@@ -156,28 +160,28 @@ advanceInput shard@Shard{..} node@Node{..} ts = do
   flushInput shard node
   shardNodeStates' <- readMVar shardNodeStates
   case HM.lookup nodeId shardNodeStates' of
-    Nothing -> error $ "No matching node found: " <> show nodeId
+    Nothing -> throw . RunShardError $ "No matching node found: " <> T.pack (show nodeId)
     Just (InputState frontier_m _) -> do
       ftChanges <- atomically $ do
         stateTVar frontier_m (\ft -> Tuple.swap $ moveFrontier ft MoveLater ts)
       mapM_ (\change -> applyFrontierChange shard node (frontierChangeTs change) (frontierChangeDiff change)) ftChanges
-    Just state -> error $ "Incorrect type of node state found: " <> show state
+    Just state -> throw . RunShardError $ "Incorrect type of node state found: " <> T.pack (show state)
 
 emitChangeBatch :: (Hashable a, Ord a, Show a) => Shard a -> Node -> DataChangeBatch a -> IO ()
 emitChangeBatch shard@Shard{..} node dcb@DataChangeBatch{..} = do
   let spec = graphNodeSpecs shardGraph HM.! nodeId node
   case HM.lookup (nodeId node) (graphNodeSpecs shardGraph) of
-    Nothing   -> error $ "No matching node found: " <> show (nodeId node)
+    Nothing   -> throw . RunShardError $ "No matching node found: " <> T.pack (show (nodeId node))
     Just spec -> do
       case outputIndex spec of
         True -> unless (V.length (getInputsFromSpec spec) == 1) $ do
-          error "Nodes that output indexes can only have 1 input"
+          throw $ RunShardError "Nodes that output indexes can only have 1 input"
         False -> return ()
 
       -- check emission: frontier of from_node <= ts
       shardNodeFrontiers' <- readMVar shardNodeFrontiers
       case HM.lookup (nodeId node) shardNodeFrontiers' of
-        Nothing       -> error $ "No matching node found: " <> show (nodeId node)
+        Nothing       -> throw . RunShardError $ "No matching node found: " <> T.pack (show (nodeId node))
         Just outputFt -> mapM_
           (\ts -> assert (tsfFrontier outputFt <.= ts) (return ())) dcbLowerBound
 
@@ -215,7 +219,7 @@ processChangeBatch shard@Shard{..} = do
       mapM_ (\ts -> queueFrontierChange shard nodeInput ts (-1)) (dcbLowerBound changeBatch)
       shardNodeStates'    <- readMVar shardNodeStates
       case graphNodeSpecs shardGraph HM.! nodeId node of
-        InputSpec -> error $ "Input node will never have work to do on its input"
+        InputSpec -> throw $ RunShardError "Input node will never have work to do on its input"
         MapSpec _ (Mapper mapper) -> do
           let outputChangeBatch = L.foldl
                 (\acc change -> do
@@ -252,17 +256,17 @@ processChangeBatch shard@Shard{..} = do
               otherNode = case inputIx of
                             0 -> node2
                             1 -> node1
-                            _ -> error "impossible!"
+                            _ -> throw ImpossibleError
           otherIndex <- readTVarIO $ getIndexFromState (shardNodeStates' HM.! nodeId otherNode)
           let (JoinState ft1_m ft2_m) = shardNodeStates' HM.! nodeId node
           joinFt <- case inputIx of
                       0 -> readTVarIO ft2_m
                       1 -> readTVarIO ft1_m
-                      _ -> error "impossible!"
+                      _ -> throw ImpossibleError
           let (keygen1', keygen2', joiner') = case inputIx of
                                                 0 -> (keygen2, keygen1, flip joiner)
                                                 1 -> (keygen1, keygen2, joiner)
-                                                _ -> error "impossible!"
+                                                _ -> throw ImpossibleError
           let outputChangeBatch =
                 mergeJoinIndex otherIndex joinFt changeBatch keygen1' keygen2' joiner'
           unless (L.null $ dcbChanges outputChangeBatch) $
@@ -271,7 +275,7 @@ processChangeBatch shard@Shard{..} = do
           case inputIx of
             0 -> atomically $ writeTVar ft1_m inputFt
             1 -> atomically $ writeTVar ft2_m inputFt
-            _ -> error "impossible!"
+            _ -> throw ImpossibleError
         OutputSpec _ -> do
           let (OutputState unpoppedChangeBatches_m) = shardNodeStates' HM.! nodeId node
           atomically $ modifyTVar unpoppedChangeBatches_m (\xs -> xs ++ [changeBatch])
@@ -403,7 +407,7 @@ applyFrontierChange :: (Hashable a, Ord a, Show a) => Shard a -> Node -> Timesta
 applyFrontierChange shard@Shard{..} node ts diff = do
   shardNodeFrontiers' <- readMVar shardNodeFrontiers
   case HM.lookup (nodeId node) shardNodeFrontiers' of
-    Nothing  -> error $ "No matching node found: " <> show (nodeId node)
+    Nothing  -> throw . RunShardError $ "No matching node found: " <> T.pack (show (nodeId node))
     Just tsf -> do
       let (newTsf, ftChanges) = updateTimestampsWithFrontier tsf ts diff
       modifyMVar_ shardNodeFrontiers (return . HM.insert (nodeId node) newTsf)

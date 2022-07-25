@@ -27,6 +27,7 @@ library
     DiffFlow.Graph
     DiffFlow.Shard
     DiffFlow.Types
+    DiffFlow.Error
     DiffFlow.Weird
 
   build-depends:
