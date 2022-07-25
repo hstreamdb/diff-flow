@@ -3,26 +3,30 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 
 module DiffFlow.Types where
 
+import           Control.Exception (throw)
 import           Control.Monad
 import           Data.Aeson        (Object (..), Value (..))
 import qualified Data.Aeson        as Aeson
+import           Data.Hashable     (Hashable)
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.List         as L
 import           Data.MultiSet     (MultiSet)
 import qualified Data.MultiSet     as MultiSet
+import           Data.Set          (Set)
+import qualified Data.Set          as Set
+import qualified Data.Text         as T
 import           Data.Vector       (Vector)
 import qualified Data.Vector       as V
 import           Data.Word         (Word64)
-
-import           Data.Hashable     (Hashable)
-import           Data.Set          (Set)
-import qualified Data.Set          as Set
 import           GHC.Generics      (Generic)
+
+import           DiffFlow.Error
 
 type Row = Aeson.Object
 type Bag = MultiSet Row
@@ -54,7 +58,7 @@ instance (Ord a) => CausalOrd (Timestamp a) (Timestamp a) where
         else if L.all (\x -> x == EQ || x == LT) compRes then PLT
           else if L.all (\x -> x == EQ || x == GT) compRes then PGT
             else PNONE
-      else error $ "Trying comparing timestamps with different lengths: " <> show len1 <> ", " <> show len2
+      else throw . BasicTypesError $ "Trying comparing timestamps with different lengths: " <> T.pack (show len1) <> ", " <> T.pack (show len2)
     where len1 = L.length (timestampCoords ts1)
           len2 = L.length (timestampCoords ts2)
           compRes = (timestampTime ts1 `compare` timestampTime ts2) :
@@ -141,11 +145,11 @@ moveFrontier ft direction ts =
             False -> (goOn,acc)
             True  -> case x `causalCompare` ts of
               PEQ   -> if L.null acc then (False,acc)
-                         else error $
-                              "Already moved to " <> show ts <> "? Found " <> show x
+                         else throw . BasicTypesError $
+                              "Already moved to " <> T.pack (show ts) <> "? Found " <> T.pack (show x)
               PGT   -> if L.null acc then (False,acc)
-                         else error $
-                              "Already moved to " <> show ts <> "? Found " <> show x
+                         else throw . BasicTypesError $
+                              "Already moved to " <> T.pack (show ts) <> "? Found " <> T.pack (show x)
               PLT   -> let change = FrontierChange x (-1) in (goOn, change:acc)
               PNONE -> (goOn,acc)) (True,[]) ft
       MoveEarlier ->
@@ -154,11 +158,11 @@ moveFrontier ft direction ts =
             False -> (goOn,acc)
             True  -> case x `causalCompare` ts of
               PEQ   -> if L.null acc then (False,acc)
-                         else error $
-                              "Already moved to " <> show ts <> "? Found " <> show x
+                         else throw . BasicTypesError $
+                              "Already moved to " <> T.pack (show ts) <> "? Found " <> T.pack (show x)
               PLT   -> if L.null acc then (False,acc)
-                         else error $
-                              "Already moved to " <> show ts <> "? Found " <> show x
+                         else throw . BasicTypesError $
+                              "Already moved to " <> T.pack (show ts) <> "? Found " <> T.pack (show x)
               PGT   -> let change = FrontierChange x (-1) in (goOn, change:acc)
               PNONE -> (goOn,acc)) (True,[]) ft
     ft' = L.foldl (\acc FrontierChange{..} -> Set.delete frontierChangeTs acc) ft changes
