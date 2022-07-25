@@ -15,6 +15,7 @@ import           Data.Word               (Word64)
 
 
 import           Control.Concurrent.STM
+import           Control.DeepSeq         (NFData)
 import           Data.Hashable           (Hashable)
 import           Data.HashMap.Lazy       (HashMap)
 import qualified Data.HashMap.Lazy       as HM
@@ -24,17 +25,17 @@ import           Data.Vector             (Vector)
 import qualified Data.Vector             as V
 import           GHC.Generics            (Generic)
 
-newtype Node = Node { nodeId :: Int } deriving (Eq, Show, Ord, Generic, Hashable)
+newtype Node = Node { nodeId :: Int } deriving (Eq, Show, Ord, Generic, Hashable, NFData)
 
 data NodeInput = NodeInput
   { nodeInputNode  :: Node
   , nodeInputIndex :: Int
-  } deriving (Eq, Show, Ord, Generic, Hashable)
+  } deriving (Eq, Show, Ord, Generic, Hashable, NFData)
 
-newtype Mapper = Mapper { mapper :: Row -> Row }
-newtype Filter = Filter { filterF :: Row -> Bool }
-newtype Joiner = Joiner { joiner :: Row -> Row -> Row }
-newtype Reducer = Reducer { reducer :: Row -> Row -> Row } -- \acc x -> acc'
+newtype Mapper = Mapper { mapper :: Row -> Row } deriving (Generic, NFData)
+newtype Filter = Filter { filterF :: Row -> Bool } deriving (Generic, NFData)
+newtype Joiner = Joiner { joiner :: Row -> Row -> Row } deriving (Generic, NFData)
+newtype Reducer = Reducer { reducer :: Row -> Row -> Row } deriving (Generic, NFData) -- \acc x -> acc'
 type KeyGenerator = Row -> Row
 
 {-
@@ -64,6 +65,7 @@ data NodeSpec
   | UnionSpec         Node Node                 -- input1, input2
   | DistinctSpec      Node                      -- input
   | ReduceSpec        Node Row KeyGenerator Reducer -- input, init, kengen, reducer
+  deriving (Generic, NFData)
 
 instance Show NodeSpec where
   show InputSpec             = "InputSpec"
@@ -160,14 +162,14 @@ specToState _ = return NoState
 
 ----
 
-newtype Subgraph = Subgraph { subgraphId :: Int } deriving (Eq, Show, Generic, Hashable)
+newtype Subgraph = Subgraph { subgraphId :: Int } deriving (Eq, Show, Generic, Hashable, NFData)
 
 data Graph = Graph
   { graphNodeSpecs       :: HashMap Int NodeSpec
   , graphNodeSubgraphs   :: HashMap Int [Subgraph]
   , graphSubgraphParents :: HashMap Int Subgraph
   , graphDownstreamNodes :: HashMap Int [NodeInput]
-  }
+  } deriving (Generic, NFData)
 
 data GraphBuilder = GraphBuilder
   { graphBuilderNodeSpecs       :: Vector NodeSpec
